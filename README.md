@@ -17,9 +17,8 @@
 
 * 🎤 **ChatterboxTTS**: Custom voice cloning using short reference clips.
 * 🗣️ **Kokoro TTS**: High-quality, multilingual pre-trained voices.
-* 🐟 **Fish Speech**: Advanced TTS engine with clarity enhancement.
+* 🐟 **Fish Speech**: Advanced TTS engine.
 * 🎛️ **Professional Audio Effects**: Reverb, Echo, EQ, Pitch shift, Gain.
-* 💾 **Voice Presets**: Save and reuse voice configurations.
 
 ---
 
