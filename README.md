@@ -23,7 +23,13 @@
 
 ---
 
-## 📍📍📍Tested only on a windows 11 machine with a rtx 4090📍📍📍
+> ## 🚨🚨 **WARNING / IMPORTANT NOTES** 🚨🚨
+>
+> ⚠️ **Tested Hardware:** This project has **only** been tested on a **Windows 11** machine with an **RTX 4090** GPU.
+> 💻 Performance or compatibility on other systems is **not guaranteed**.
+>
+> 🔊 **Audio Caution:** The **Fish Speech** feature may occasionally produce **extremely loud** or **muffled** audio.
+> 🎧 **Please lower your volume and avoid using headphones** during initial tests.
 
 ---
 ## 🛠️ Installation
