@@ -139,3 +139,20 @@ MIT License © SUP3RMASS1VE
 
 ---
 
+## 🙏 Acknowledgments
+
+This project proudly integrates and builds upon the amazing work of:
+
+- [Fish Speech by fishaudio](https://github.com/fishaudio/fish-speech) – Natural and expressive TTS engine.  
+  📜 License: [MIT License](https://github.com/fishaudio/fish-speech/blob/main/LICENSE)
+
+- [Kokoro TTS by hexgrad](https://github.com/hexgrad/kokoro) – High-quality multilingual voice synthesis.  
+  📜 License: [Apache 2.0 License](https://github.com/hexgrad/kokoro/blob/main/LICENSE)
+
+- [ChatterboxTTS by Resemble AI](https://github.com/resemble-ai/chatterbox) – Custom voice cloning from short reference clips.  
+  📜 License: [Apache 2.0 License](https://github.com/resemble-ai/chatterbox/blob/main/LICENSE)
+
+We deeply thank the authors and contributors to these projects for making this work possible.
+
+---
+
