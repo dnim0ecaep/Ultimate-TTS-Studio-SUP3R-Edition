@@ -77,14 +77,11 @@ torch.nn.utils.parametrize = torch.nn.utils.parametrizations.weight_norm
 
 # ===== DIRECTORY SETUP =====
 PRESETS_FILE = "voice_presets.json"
-PRESETS_AUDIO_DIR = "saved_voices"
-EXPORT_DIR = "exports"
 output_folder = os.path.join(os.getcwd(), 'outputs')
-custom_voices_folder = os.path.join(os.getcwd(), 'custom_voices')
 
-for directory in [PRESETS_AUDIO_DIR, EXPORT_DIR, output_folder, custom_voices_folder]:
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+# Create only the outputs folder
+if not os.path.exists(output_folder):
+    os.makedirs(output_folder)
 
 # ===== MODEL INITIALIZATION =====
 CHATTERBOX_MODEL = None
@@ -119,7 +116,7 @@ def init_kokoro():
         
         # Check if first run
         if not os.path.exists(os.path.join(cache_base, 'HF_HOME/hub/models--hexgrad--Kokoro-82M')):
-            print("First run detected, downloading Kokoro models...")
+            print("Downloading/Loading Kokoro models...")
             os.environ.pop("TRANSFORMERS_OFFLINE", None)
             os.environ.pop("HF_HUB_OFFLINE", None)
         
@@ -808,6 +805,7 @@ def generate_fish_speech_tts(
 def get_custom_voices():
     """Get custom voices from the custom_voices folder."""
     custom_voices = {}
+    custom_voices_folder = os.path.join(os.getcwd(), 'custom_voices')
     if os.path.exists(custom_voices_folder):
         for file in os.listdir(custom_voices_folder):
             file_path = os.path.join(custom_voices_folder, file)
@@ -843,6 +841,7 @@ def preload_kokoro_voices():
     for voice_name, voice_id in custom_voices.items():
         try:
             voice_file = f"{voice_id.split('_')[1]}.pt"
+            custom_voices_folder = os.path.join(os.getcwd(), 'custom_voices')
             voice_path = os.path.join(custom_voices_folder, voice_file)
             
             if os.path.exists(voice_path):
@@ -1143,7 +1142,7 @@ def create_gradio_interface():
             with gr.Column(scale=3):
                 # Text input
                 text = gr.Textbox(
-                    value="Hello! This is a demonstration of the ULTIMATE TTS STUDIO PRO. You can choose between ChatterboxTTS for custom voice cloning or Kokoro TTS for high-quality pre-trained voices.",
+                    value="Hello! This is a demonstration of the ULTIMATE TTS STUDIO. You can choose between ChatterboxTTS and Fish Speach for custom voice cloning or Kokoro TTS for high-quality pre-trained voices.",
                     label="📝 Text to synthesize",
                     lines=4,
                     placeholder="Enter your text here..."
@@ -1417,7 +1416,6 @@ def create_gradio_interface():
             - **Text Length**: Kokoro has a 5000 character limit, ChatterboxTTS and Fish Speech can handle longer texts
             - **Effects**: Apply reverb for space, echo for depth, pitch shift for character voices
             - **Voice Mixing**: Blend Kokoro voices with formulas like "af_heart * 0.7 + af_bella * 0.3"
-            - **Presets**: Save your favorite settings for quick reuse
             - **Fish Speech Quality**: Uses clean, unprocessed output for best natural sound. Use Audio Effects section for any enhancements.
             
             ### 🎵 Audio Effects Guide
