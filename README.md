@@ -62,7 +62,7 @@ pip install uv
 #### Install PyTorch (CUDA 12.4 build)
 
 ```bash
-uv pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 ```
 
 #### Install other requirements
