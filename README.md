@@ -73,19 +73,45 @@ uv pip install -r requirements.txt
 
 > 💡 If you're not using `uv`, you can just use `pip install` in its place.
 
+Here’s the updated section for the `README.md`, including the Hugging Face token instructions. You can replace the original **“First-Time Setup Tips”** section with this:
+
 ---
 
 ## 🧠 First-Time Setup Tips
 
-* To use **Fish Speech**, download the model checkpoint:
+### 📥 Download Fish Speech Model (one-time)
 
-  ```bash
-  huggingface-cli download fishaudio/openaudio-s1-mini --local-dir checkpoints/openaudio-s1-mini
-  ```
+To use **Fish Speech**, you must download the model checkpoint from Hugging Face. This requires a Hugging Face account and access token.
 
-* Kokoro models are automatically downloaded on first run.
+### 🔐 Step-by-Step:
+
+1. **Create an account (if needed):**
+   [https://huggingface.co/join](https://huggingface.co/join)
+
+2. **Get your access token:**
+   Visit [https://huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) and create a **read token**.
+
+3. **Log in via CLI:**
+
+   ```bash
+   huggingface-cli login
+   ```
+
+   Paste your token when prompted.
+
+4. **(Optional)** Accept the model license:
+   Visit [https://huggingface.co/fishaudio/openaudio-s1-mini](https://huggingface.co/fishaudio/openaudio-s1-mini) and click **"Access repository"** if prompted.
+
+5. **Download the model:**
+
+   ```bash
+   huggingface-cli download fishaudio/openaudio-s1-mini --local-dir checkpoints/openaudio-s1-mini
+   ```
 
 ---
+
+Would you like the full updated `README.md` in one code block to copy/paste?
+
 
 ## ▶️ Run the Studio
 
@@ -113,4 +139,3 @@ MIT License © SUP3RMASS1VE
 
 ---
 
-Would you like this saved to a file or customized with usage screenshots, Docker support, or Hugging Face Spaces deploy instructions?
