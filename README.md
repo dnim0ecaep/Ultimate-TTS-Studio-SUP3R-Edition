@@ -1,4 +1,5 @@
 
+![Screenshot 2025-06-06 183115](https://github.com/user-attachments/assets/dc1fc2f8-4d28-48ea-9678-e4b7b8899681)
 ---
 
 # ✨ Ultimate TTS Studio SUP3R Edition ✨
@@ -22,6 +23,9 @@
 
 ---
 
+## 📍📍📍Tested only on a windows 11 machine with a rtx 4090📍📍📍
+
+---
 ## 🛠️ Installation
 
 ### 1. Clone the repository
