@@ -90,28 +90,75 @@ FISH_SPEECH_ENGINE = None
 FISH_SPEECH_LLAMA_QUEUE = None
 loaded_voices = {}
 
+# Model loading status
+MODEL_STATUS = {
+    'chatterbox': {'loaded': False, 'loading': False},
+    'kokoro': {'loaded': False, 'loading': False},
+    'fish_speech': {'loaded': False, 'loading': False}
+}
+
 def init_chatterbox():
     """Initialize ChatterboxTTS model."""
-    global CHATTERBOX_MODEL
+    global CHATTERBOX_MODEL, MODEL_STATUS
     if not CHATTERBOX_AVAILABLE:
-        return False
+        return False, "❌ ChatterboxTTS not available - check installation"
+    
+    if MODEL_STATUS['chatterbox']['loaded']:
+        return True, "✅ ChatterboxTTS already loaded"
+    
+    if MODEL_STATUS['chatterbox']['loading']:
+        return False, "⏳ ChatterboxTTS is currently loading..."
     
     try:
+        MODEL_STATUS['chatterbox']['loading'] = True
         print("🔄 Loading ChatterboxTTS...")
         CHATTERBOX_MODEL = ChatterboxTTS.from_pretrained(DEVICE)
+        MODEL_STATUS['chatterbox']['loaded'] = True
+        MODEL_STATUS['chatterbox']['loading'] = False
         print("✅ ChatterboxTTS loaded successfully")
-        return True
+        return True, "✅ ChatterboxTTS loaded successfully"
     except Exception as e:
-        print(f"❌ Failed to load ChatterboxTTS: {e}")
-        return False
+        MODEL_STATUS['chatterbox']['loading'] = False
+        error_msg = f"❌ Failed to load ChatterboxTTS: {e}"
+        print(error_msg)
+        return False, error_msg
+
+def unload_chatterbox():
+    """Unload ChatterboxTTS model to free memory."""
+    global CHATTERBOX_MODEL, MODEL_STATUS
+    try:
+        if CHATTERBOX_MODEL is not None:
+            del CHATTERBOX_MODEL
+            CHATTERBOX_MODEL = None
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
+        if DEVICE == "cuda":
+            torch.cuda.empty_cache()
+        
+        MODEL_STATUS['chatterbox']['loaded'] = False
+        print("✅ ChatterboxTTS unloaded successfully")
+        return "✅ ChatterboxTTS unloaded - memory freed"
+    except Exception as e:
+        error_msg = f"❌ Error unloading ChatterboxTTS: {e}"
+        print(error_msg)
+        return error_msg
 
 def init_kokoro():
     """Initialize Kokoro TTS models and pipelines."""
-    global KOKORO_PIPELINES
+    global KOKORO_PIPELINES, MODEL_STATUS
     if not KOKORO_AVAILABLE:
-        return False
+        return False, "❌ Kokoro TTS not available - check installation"
+    
+    if MODEL_STATUS['kokoro']['loaded']:
+        return True, "✅ Kokoro TTS already loaded"
+    
+    if MODEL_STATUS['kokoro']['loading']:
+        return False, "⏳ Kokoro TTS is currently loading..."
     
     try:
+        MODEL_STATUS['kokoro']['loading'] = True
         print("🔄 Loading Kokoro TTS...")
         
         # Check if first run
@@ -137,28 +184,66 @@ def init_kokoro():
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
         os.environ["HF_HUB_OFFLINE"] = "1"
         
+        MODEL_STATUS['kokoro']['loaded'] = True
+        MODEL_STATUS['kokoro']['loading'] = False
         print("✅ Kokoro TTS loaded successfully")
-        return True
+        return True, "✅ Kokoro TTS loaded successfully"
         
     except Exception as e:
-        print(f"❌ Failed to load Kokoro TTS: {e}")
-        return False
+        MODEL_STATUS['kokoro']['loading'] = False
+        error_msg = f"❌ Failed to load Kokoro TTS: {e}"
+        print(error_msg)
+        return False, error_msg
+
+def unload_kokoro():
+    """Unload Kokoro TTS models to free memory."""
+    global KOKORO_PIPELINES, loaded_voices, MODEL_STATUS
+    try:
+        # Clear pipelines
+        for pipeline in KOKORO_PIPELINES.values():
+            del pipeline
+        KOKORO_PIPELINES.clear()
+        
+        # Clear loaded voices
+        loaded_voices.clear()
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
+        if DEVICE == "cuda":
+            torch.cuda.empty_cache()
+        
+        MODEL_STATUS['kokoro']['loaded'] = False
+        print("✅ Kokoro TTS unloaded successfully")
+        return "✅ Kokoro TTS unloaded - memory freed"
+    except Exception as e:
+        error_msg = f"❌ Error unloading Kokoro TTS: {e}"
+        print(error_msg)
+        return error_msg
 
 def init_fish_speech():
     """Initialize Fish Speech TTS engine."""
-    global FISH_SPEECH_ENGINE, FISH_SPEECH_LLAMA_QUEUE
+    global FISH_SPEECH_ENGINE, FISH_SPEECH_LLAMA_QUEUE, MODEL_STATUS
     if not FISH_SPEECH_AVAILABLE:
-        return False
+        return False, "❌ Fish Speech not available - check installation"
+    
+    if MODEL_STATUS['fish_speech']['loaded']:
+        return True, "✅ Fish Speech already loaded"
+    
+    if MODEL_STATUS['fish_speech']['loading']:
+        return False, "⏳ Fish Speech is currently loading..."
     
     try:
+        MODEL_STATUS['fish_speech']['loading'] = True
         print("🔄 Loading Fish Speech...")
         
         # Check for model checkpoints
         checkpoint_path = "checkpoints/openaudio-s1-mini"
         if not os.path.exists(checkpoint_path):
-            print("Fish Speech checkpoints not found. Please download them first:")
-            print("huggingface-cli download fishaudio/openaudio-s1-mini --local-dir checkpoints/openaudio-s1-mini")
-            return False
+            MODEL_STATUS['fish_speech']['loading'] = False
+            error_msg = "❌ Fish Speech checkpoints not found. Please download them first:\nhuggingface-cli download fishaudio/openaudio-s1-mini --local-dir checkpoints/openaudio-s1-mini"
+            print(error_msg)
+            return False, error_msg
         
         # Initialize LLAMA queue for text2semantic processing
         precision = torch.half if DEVICE == "cuda" else torch.bfloat16
@@ -184,21 +269,84 @@ def init_fish_speech():
             compile=False
         )
         
+        MODEL_STATUS['fish_speech']['loaded'] = True
+        MODEL_STATUS['fish_speech']['loading'] = False
         print("✅ Fish Speech loaded successfully")
-        return True
+        return True, "✅ Fish Speech loaded successfully"
         
     except Exception as e:
-        print(f"❌ Failed to load Fish Speech: {e}")
-        return False
+        MODEL_STATUS['fish_speech']['loading'] = False
+        error_msg = f"❌ Failed to load Fish Speech: {e}"
+        print(error_msg)
+        return False, error_msg
 
-# Initialize models at startup
-print("🚀 Initializing TTS models...")
-chatterbox_available = init_chatterbox()
-kokoro_available = init_kokoro()
-fish_speech_available = init_fish_speech()
+def unload_fish_speech():
+    """Unload Fish Speech TTS engine to free memory."""
+    global FISH_SPEECH_ENGINE, FISH_SPEECH_LLAMA_QUEUE, MODEL_STATUS
+    try:
+        if FISH_SPEECH_ENGINE is not None:
+            del FISH_SPEECH_ENGINE
+            FISH_SPEECH_ENGINE = None
+        
+        if FISH_SPEECH_LLAMA_QUEUE is not None:
+            del FISH_SPEECH_LLAMA_QUEUE
+            FISH_SPEECH_LLAMA_QUEUE = None
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
+        if DEVICE == "cuda":
+            torch.cuda.empty_cache()
+        
+        MODEL_STATUS['fish_speech']['loaded'] = False
+        print("✅ Fish Speech unloaded successfully")
+        return "✅ Fish Speech unloaded - memory freed"
+    except Exception as e:
+        error_msg = f"❌ Error unloading Fish Speech: {e}"
+        print(error_msg)
+        return error_msg
 
-if not chatterbox_available and not kokoro_available and not fish_speech_available:
-    print("❌ No TTS models available. Please check your installation.")
+def get_model_status():
+    """Get current status of all models."""
+    status_text = "📊 **Model Status:**\n\n"
+    
+    # ChatterboxTTS status
+    if CHATTERBOX_AVAILABLE:
+        if MODEL_STATUS['chatterbox']['loading']:
+            status_text += "🎤 **ChatterboxTTS:** ⏳ Loading...\n"
+        elif MODEL_STATUS['chatterbox']['loaded']:
+            status_text += "🎤 **ChatterboxTTS:** ✅ Loaded\n"
+        else:
+            status_text += "🎤 **ChatterboxTTS:** ⭕ Not loaded\n"
+    else:
+        status_text += "🎤 **ChatterboxTTS:** ❌ Not available\n"
+    
+    # Kokoro TTS status
+    if KOKORO_AVAILABLE:
+        if MODEL_STATUS['kokoro']['loading']:
+            status_text += "🗣️ **Kokoro TTS:** ⏳ Loading...\n"
+        elif MODEL_STATUS['kokoro']['loaded']:
+            status_text += "🗣️ **Kokoro TTS:** ✅ Loaded\n"
+        else:
+            status_text += "🗣️ **Kokoro TTS:** ⭕ Not loaded\n"
+    else:
+        status_text += "🗣️ **Kokoro TTS:** ❌ Not available\n"
+    
+    # Fish Speech status
+    if FISH_SPEECH_AVAILABLE:
+        if MODEL_STATUS['fish_speech']['loading']:
+            status_text += "🐟 **Fish Speech:** ⏳ Loading...\n"
+        elif MODEL_STATUS['fish_speech']['loaded']:
+            status_text += "🐟 **Fish Speech:** ✅ Loaded\n"
+        else:
+            status_text += "🐟 **Fish Speech:** ⭕ Not loaded\n"
+    else:
+        status_text += "🐟 **Fish Speech:** ❌ Not available\n"
+    
+    return status_text
+
+# Don't initialize models at startup - they will be loaded on demand
+print("🚀 TTS models ready for on-demand loading...")
 
 # ===== KOKORO VOICE DEFINITIONS =====
 KOKORO_CHOICES = {
@@ -480,8 +628,11 @@ def generate_chatterbox_tts(
     effects_settings=None
 ):
     """Generate TTS audio using ChatterboxTTS."""
-    if not chatterbox_available or CHATTERBOX_MODEL is None:
-        return None, "❌ ChatterboxTTS not available"
+    if not CHATTERBOX_AVAILABLE:
+        return None, "❌ ChatterboxTTS not available - check installation"
+    
+    if not MODEL_STATUS['chatterbox']['loaded'] or CHATTERBOX_MODEL is None:
+        return None, "❌ ChatterboxTTS not loaded - please load the model first"
     
     try:
         if seed_num_input != 0:
@@ -730,11 +881,16 @@ def generate_fish_speech_tts(
     fish_seed: int = None,
     effects_settings=None
 ):
-    """Generate TTS audio using Fish Speech - Clean implementation following official Fish Speech patterns."""
-    if not FISH_SPEECH_AVAILABLE or FISH_SPEECH_ENGINE is None:
-        return None, "❌ Fish Speech not available"
+    """Generate TTS audio using Fish Speech - Proper implementation with chunking support."""
+    if not FISH_SPEECH_AVAILABLE:
+        return None, "❌ Fish Speech not available - check installation"
+    
+    if not MODEL_STATUS['fish_speech']['loaded'] or FISH_SPEECH_ENGINE is None:
+        return None, "❌ Fish Speech not loaded - please load the model first"
     
     try:
+        from fish_speech.text import split_text
+        
         # Prepare reference audio if provided
         references = []
         if fish_ref_audio and os.path.exists(fish_ref_audio):
@@ -742,63 +898,100 @@ def generate_fish_speech_tts(
             ref_text = fish_ref_text or ""  # Use provided text or empty string
             references.append(ServeReferenceAudio(audio=ref_audio_bytes, text=ref_text))
         
-        # Create TTS request using official Fish Speech defaults (similar to their webui)
-        request = ServeTTSRequest(
-            text=text_input,
-            references=references,
-            reference_id=None,
-            format="wav",
-            max_new_tokens=fish_max_tokens,
-            chunk_length=300,  # Use chunking like official implementation
-            top_p=fish_top_p,  # Don't limit, let user control
-            repetition_penalty=fish_repetition_penalty,
-            temperature=fish_temperature,  # Don't limit, let user control
-            streaming=False,
-            use_memory_cache="off",
-            seed=fish_seed
-        )
+        # Split text into appropriate chunks using Fish Speech's own text splitter
+        # This is crucial for handling long texts properly
+        chunk_length = 200  # Fish Speech default chunk length for text splitting
+        text_chunks = split_text(text_input, chunk_length)
         
-        # Generate audio using the same pattern as official Fish Speech webui
-        results = list(FISH_SPEECH_ENGINE.inference(request))
+        if not text_chunks:
+            return None, "❌ No valid text chunks generated"
         
-        # Find the final result
-        final_result = None
-        for result in results:
-            if result.code == "final":
-                final_result = result
-                break
-            elif result.code == "error":
-                return None, f"❌ Fish Speech error: {str(result.error)}"
+        print(f"Fish Speech - Processing {len(text_chunks)} text chunks")
+        for i, chunk in enumerate(text_chunks):
+            print(f"  Chunk {i+1}: {chunk[:50]}{'...' if len(chunk) > 50 else ''}")
         
-        if final_result is None or final_result.error is not None:
-            error_msg = str(final_result.error) if final_result else "No audio generated"
-            return None, f"❌ Fish Speech error: {error_msg}"
+        all_audio_segments = []
         
-        # Extract audio data - use as-is from Fish Speech (this is the key!)
-        sample_rate, audio_data = final_result.audio
+        # Process each chunk separately
+        for i, chunk_text in enumerate(text_chunks):
+            print(f"Fish Speech - Processing chunk {i+1}/{len(text_chunks)}")
+            
+            # Create TTS request for this chunk
+            request = ServeTTSRequest(
+                text=chunk_text,
+                references=references,
+                reference_id=None,
+                format="wav",
+                max_new_tokens=fish_max_tokens,
+                chunk_length=chunk_length,  # Internal chunking within Fish Speech
+                top_p=fish_top_p,
+                repetition_penalty=fish_repetition_penalty,
+                temperature=fish_temperature,
+                streaming=False,
+                use_memory_cache="off",
+                seed=fish_seed,
+                normalize=True  # Enable text normalization for better stability
+            )
+            
+            # Generate audio for this chunk
+            results = list(FISH_SPEECH_ENGINE.inference(request))
+            
+            # Find the final result for this chunk
+            chunk_final_result = None
+            for result in results:
+                if result.code == "final":
+                    chunk_final_result = result
+                    break
+                elif result.code == "error":
+                    return None, f"❌ Fish Speech error in chunk {i+1}: {str(result.error)}"
+            
+            if chunk_final_result is None or chunk_final_result.error is not None:
+                error_msg = str(chunk_final_result.error) if chunk_final_result else f"No audio generated for chunk {i+1}"
+                return None, f"❌ Fish Speech error: {error_msg}"
+            
+            # Extract audio data for this chunk
+            sample_rate, chunk_audio_data = chunk_final_result.audio
+            
+            # Convert to float32
+            if chunk_audio_data.dtype != np.float32:
+                chunk_audio_data = chunk_audio_data.astype(np.float32)
+            
+            all_audio_segments.append(chunk_audio_data)
+            print(f"Fish Speech - Chunk {i+1} generated: {len(chunk_audio_data)} samples")
         
-        # Convert to float32 and ensure proper range (Fish Speech should output proper levels)
-        if audio_data.dtype != np.float32:
-            audio_data = audio_data.astype(np.float32)
+        # Concatenate all audio segments with small silence between chunks
+        if len(all_audio_segments) == 1:
+            final_audio = all_audio_segments[0]
+        else:
+            # Add small silence between chunks (100ms)
+            silence_samples = int(sample_rate * 0.1)
+            silence = np.zeros(silence_samples, dtype=np.float32)
+            
+            concatenated_segments = []
+            for i, segment in enumerate(all_audio_segments):
+                concatenated_segments.append(segment)
+                if i < len(all_audio_segments) - 1:  # Don't add silence after last segment
+                    concatenated_segments.append(silence)
+            
+            final_audio = np.concatenate(concatenated_segments)
         
         # Simple safety normalization only if audio is clipped
-        peak = np.max(np.abs(audio_data))
+        peak = np.max(np.abs(final_audio))
         if peak > 1.0:
-            audio_data = audio_data / peak  # Only normalize if actually clipped
+            final_audio = final_audio / peak
             print(f"Fish Speech - Normalized clipped audio (peak was {peak:.3f})")
         
-        print(f"Fish Speech - Raw output peak: {peak:.3f} ({20*np.log10(peak + 1e-10):.1f} dB)")
+        print(f"Fish Speech - Final audio: {len(final_audio)} samples, peak: {peak:.3f}")
         
-        # Apply user-requested effects only (post-processing like official Fish Speech)
+        # Apply user-requested effects
         if effects_settings:
-            audio_data = apply_audio_effects(audio_data, sample_rate, effects_settings)
+            final_audio = apply_audio_effects(final_audio, sample_rate, effects_settings)
         
-        final_peak = np.max(np.abs(audio_data))
-        print(f"Fish Speech - Final peak: {final_peak:.3f}")
-        
-        return (sample_rate, audio_data), "✅ Generated with Fish Speech (clean output)"
+        return (sample_rate, final_audio), f"✅ Generated with Fish Speech ({len(text_chunks)} chunks processed)"
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return None, f"❌ Fish Speech error: {str(e)}"
 
 # ===== KOKORO TTS FUNCTIONS =====
@@ -823,7 +1016,7 @@ def update_kokoro_voice_choices():
 
 def preload_kokoro_voices():
     """Preload Kokoro voices."""
-    if not kokoro_available:
+    if not KOKORO_AVAILABLE or not MODEL_STATUS['kokoro']['loaded']:
         return
     
     print("Preloading Kokoro voices...")
@@ -853,8 +1046,11 @@ def preload_kokoro_voices():
 
 def generate_kokoro_tts(text, voice='af_heart', speed=1, effects_settings=None):
     """Generate TTS audio using Kokoro TTS."""
-    if not kokoro_available:
-        return None, "❌ Kokoro TTS not available"
+    if not KOKORO_AVAILABLE:
+        return None, "❌ Kokoro TTS not available - check installation"
+    
+    if not MODEL_STATUS['kokoro']['loaded'] or not KOKORO_PIPELINES:
+        return None, "❌ Kokoro TTS not loaded - please load the model first"
     
     try:
         # Remove hard character limit and implement chunking instead
@@ -1060,138 +1256,1157 @@ def generate_unified_tts(
 def create_gradio_interface():
     """Create the unified Gradio interface."""
     
-    # Preload Kokoro voices if available
-    if kokoro_available:
-        preload_kokoro_voices()
+            # Kokoro voices will be preloaded when the model is loaded
     
     with gr.Blocks(
         title="✨ ULTIMATE TTS STUDIO PRO ✨",
+        theme=gr.themes.Soft(
+            primary_hue="purple",
+            secondary_hue="blue",
+            neutral_hue="gray",
+            font=[gr.themes.GoogleFont("Inter"), "system-ui", "sans-serif"],
+        ),
         css="""
+        /* CSS Variables for Theme Support */
+        :root {
+            --text-primary: rgba(255, 255, 255, 0.9);
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.6);
+            --bg-primary: rgba(255, 255, 255, 0.05);
+            --bg-secondary: rgba(255, 255, 255, 0.03);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --accent-color: #667eea;
+            --gradient-bg: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+        }
+        
+        /* Light Mode Variables */
+        .light :root,
+        [data-theme="light"] :root,
+        .gradio-container.light {
+            --text-primary: rgba(0, 0, 0, 0.9);
+            --text-secondary: rgba(0, 0, 0, 0.7);
+            --text-muted: rgba(0, 0, 0, 0.6);
+            --bg-primary: rgba(0, 0, 0, 0.05);
+            --bg-secondary: rgba(0, 0, 0, 0.03);
+            --border-color: rgba(0, 0, 0, 0.1);
+            --accent-color: #5a67d8;
+            --gradient-bg: linear-gradient(135deg, #f7fafc 0%, #edf2f7 50%, #e2e8f0 100%);
+        }
+        
+        /* Auto-detect light mode */
+        @media (prefers-color-scheme: light) {
+            :root {
+                --text-primary: rgba(0, 0, 0, 0.9);
+                --text-secondary: rgba(0, 0, 0, 0.7);
+                --text-muted: rgba(0, 0, 0, 0.6);
+                --bg-primary: rgba(0, 0, 0, 0.05);
+                --bg-secondary: rgba(0, 0, 0, 0.03);
+                --border-color: rgba(0, 0, 0, 0.1);
+                --accent-color: #5a67d8;
+                --gradient-bg: linear-gradient(135deg, #f7fafc 0%, #edf2f7 50%, #e2e8f0 100%);
+            }
+        }
+        
+        /* Gradio light mode detection */
+        .gradio-container[data-theme="light"],
+        .gradio-container.light,
+        body[data-theme="light"] .gradio-container,
+        body.light .gradio-container {
+            --text-primary: rgba(0, 0, 0, 0.9) !important;
+            --text-secondary: rgba(0, 0, 0, 0.7) !important;
+            --text-muted: rgba(0, 0, 0, 0.6) !important;
+            --bg-primary: rgba(0, 0, 0, 0.05) !important;
+            --bg-secondary: rgba(0, 0, 0, 0.03) !important;
+            --border-color: rgba(0, 0, 0, 0.1) !important;
+            --accent-color: #5a67d8 !important;
+            --gradient-bg: linear-gradient(135deg, #f7fafc 0%, #edf2f7 50%, #e2e8f0 100%) !important;
+        }
+        
+        /* Force light mode styles when body has light class */
+        body.light .gradio-container *,
+        body[data-theme="light"] .gradio-container *,
+        .gradio-container.light *,
+        .gradio-container[data-theme="light"] * {
+            color: var(--text-primary) !important;
+        }
+        
+        /* Specific overrides for light mode text visibility */
+        body.light .gr-markdown,
+        body[data-theme="light"] .gr-markdown,
+        .gradio-container.light .gr-markdown,
+        .gradio-container[data-theme="light"] .gr-markdown {
+            color: rgba(0, 0, 0, 0.9) !important;
+        }
+        
+        body.light label,
+        body[data-theme="light"] label,
+        .gradio-container.light label,
+        .gradio-container[data-theme="light"] label {
+            color: rgba(0, 0, 0, 0.9) !important;
+        }
+        
+        /* Global Styles */
         .gradio-container {
-            max-width: 1600px !important;
+            max-width: 1800px !important;
             margin: 0 auto !important;
+            background: var(--gradient-bg) !important;
+            min-height: 100vh;
+            font-family: 'Inter', system-ui, sans-serif !important;
         }
-        .card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            padding: 20px;
-            margin: 10px 0;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+        
+        /* Animated Background - Responsive */
+        .gradio-container::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.2) 0%, transparent 50%);
+            animation: gradientShift 20s ease infinite;
+            pointer-events: none;
+            z-index: 0;
         }
-        .generate-btn {
-            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
-            border: none;
-            border-radius: 12px;
-            padding: 15px 30px;
-            font-size: 18px;
-            font-weight: bold;
-            color: white;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            transition: all 0.3s ease;
+        
+        /* Light mode background adjustment */
+        @media (prefers-color-scheme: light) {
+            .gradio-container::before {
+                background-image: 
+                    radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.1) 0%, transparent 50%),
+                    radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.1) 0%, transparent 50%),
+                    radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.08) 0%, transparent 50%);
+            }
         }
-        .generate-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        
+        @keyframes gradientShift {
+            0%, 100% { transform: rotate(0deg) scale(1); }
+            50% { transform: rotate(180deg) scale(1.1); }
         }
-        .settings-card {
-            background: rgba(255, 255, 255, 0.02);
-            border-radius: 8px;
-            padding: 15px;
-            margin: 5px 0;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-        }
+        
+        /* Main Title Styling - Compact */
         .main-title {
             text-align: center;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #667eea 100%);
+            background-size: 400% 400%;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            font-size: 3em;
+            font-size: 2.8em;
             font-weight: 900;
-            margin: 20px 0;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            margin: 15px 0 10px 0;
+            text-shadow: 0 0 40px rgba(102, 126, 234, 0.5);
+            animation: gradientMove 8s ease infinite;
+            letter-spacing: -1px;
+            position: relative;
+            z-index: 1;
+            line-height: 1.1;
         }
+        
+        @keyframes gradientMove {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
         .subtitle {
             text-align: center;
-            color: #888;
-            font-size: 1.2em;
-            margin-bottom: 30px;
+            color: var(--text-primary);
+            font-size: 1.0em;
+            margin-bottom: 20px;
             font-weight: 300;
+            letter-spacing: 0.3px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            position: relative;
+            z-index: 1;
+            line-height: 1.3;
         }
+        
+        /* Glassmorphism Cards - Compact */
+        .card, .settings-card, .gr-group {
+            background: var(--bg-primary) !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+            border-radius: 15px !important;
+            padding: 15px !important;
+            margin: 8px 0 !important;
+            border: 1px solid var(--border-color) !important;
+            box-shadow: 
+                0 4px 16px 0 rgba(31, 38, 135, 0.25),
+                inset 0 0 0 1px var(--border-color) !important;
+            transition: all 0.3s ease !important;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card:hover, .settings-card:hover, .gr-group:hover {
+            transform: translateY(-5px);
+            box-shadow: 
+                0 12px 40px 0 rgba(31, 38, 135, 0.5),
+                inset 0 0 0 1px var(--border-color) !important;
+            background: var(--bg-secondary) !important;
+        }
+        
+        /* Gradient Borders */
+        .card::before, .settings-card::before, .gr-group::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border-radius: 20px;
+            padding: 2px;
+            background: linear-gradient(45deg, #667eea, #764ba2, #f093fb, #4facfe);
+            -webkit-mask: 
+                linear-gradient(#fff 0 0) content-box, 
+                linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .card:hover::before, .settings-card:hover::before, .gr-group:hover::before {
+            opacity: 0.5;
+        }
+        
+        /* Generate Button - Compact */
+        .generate-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            border: none !important;
+            border-radius: 12px !important;
+            padding: 15px 40px !important;
+            font-size: 1.1em !important;
+            font-weight: 700 !important;
+            color: white !important;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+            box-shadow: 
+                0 6px 20px rgba(102, 126, 234, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+            transition: all 0.3s ease !important;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: relative;
+            overflow: hidden;
+            margin: 15px auto !important;
+            display: block !important;
+            width: 300px !important;
+        }
+        
+        .generate-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s ease;
+        }
+        
+        .generate-btn:hover {
+            transform: translateY(-3px) scale(1.05) !important;
+            box-shadow: 
+                0 15px 40px rgba(102, 126, 234, 0.6),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+        }
+        
+        .generate-btn:hover::before {
+            left: 100%;
+        }
+        
+        .generate-btn:active {
+            transform: translateY(-1px) scale(1.02) !important;
+        }
+        
+        /* Input Fields */
+        .gr-textbox, .gr-dropdown, .gr-slider, .gr-audio, .gr-number {
+            background: var(--bg-primary) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 12px !important;
+            color: var(--text-primary) !important;
+            transition: all 0.3s ease !important;
+        }
+        
+        .gr-textbox:focus, .gr-dropdown:focus, .gr-number:focus {
+            border-color: var(--accent-color) !important;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2) !important;
+            background: var(--bg-secondary) !important;
+        }
+        
+        /* Dropdown specific fixes */
+        .gr-dropdown {
+            position: relative !important;
+            z-index: 100 !important;
+            isolation: isolate !important;
+        }
+        
+        /* Ensure dropdown container allows overflow and is stable */
+        .gr-dropdown > div,
+        .gr-dropdown .wrap {
+            position: relative !important;
+            z-index: 100 !important;
+            contain: layout !important;
+        }
+        
+        /* Prevent dropdown from moving during interactions */
+        .gr-dropdown,
+        .gr-dropdown * {
+            backface-visibility: hidden !important;
+            transform-style: preserve-3d !important;
+        }
+        
+        /* Dropdown menu styling - Multiple selectors for better compatibility */
+        .gr-dropdown .choices,
+        .gr-dropdown ul[role="listbox"],
+        .gr-dropdown .dropdown-menu,
+        .gr-dropdown [role="listbox"],
+        .gr-dropdown .svelte-select-list {
+            background: var(--bg-primary) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border: 2px solid var(--accent-color) !important;
+            border-radius: 12px !important;
+            box-shadow: 
+                0 20px 60px rgba(0, 0, 0, 0.8),
+                0 0 0 1px rgba(102, 126, 234, 0.3) !important;
+            z-index: 99999 !important;
+            position: absolute !important;
+            top: 100% !important;
+            left: 0 !important;
+            right: 0 !important;
+            max-height: 300px !important;
+            overflow-y: auto !important;
+            margin-top: 4px !important;
+            width: 100% !important;
+            transform: none !important;
+            transition: none !important;
+        }
+        
+        /* Dropdown items */
+        .gr-dropdown .choices .item,
+        .gr-dropdown li[role="option"],
+        .gr-dropdown .dropdown-item,
+        .gr-dropdown .svelte-select-list .item {
+            color: var(--text-primary) !important;
+            padding: 12px 16px !important;
+            transition: all 0.2s ease !important;
+            background: transparent !important;
+            border: none !important;
+            cursor: pointer !important;
+            white-space: nowrap !important;
+            font-size: 0.9em !important;
+        }
+        
+        .gr-dropdown .choices .item:hover,
+        .gr-dropdown li[role="option"]:hover,
+        .gr-dropdown .dropdown-item:hover,
+        .gr-dropdown .svelte-select-list .item:hover {
+            background: rgba(102, 126, 234, 0.4) !important;
+            color: white !important;
+            transform: translateX(2px) !important;
+        }
+        
+        .gr-dropdown .choices .item.selected,
+        .gr-dropdown li[role="option"][aria-selected="true"],
+        .gr-dropdown .dropdown-item.selected,
+        .gr-dropdown .svelte-select-list .item.selected {
+            background: rgba(102, 126, 234, 0.6) !important;
+            color: white !important;
+            font-weight: 600 !important;
+        }
+        
+        /* Fix dropdown container overflow - Apply to all parent containers */
+        .gr-group,
+        .gr-column,
+        .gr-row,
+        .gr-accordion,
+        .gradio-container {
+            overflow: visible !important;
+            position: relative !important;
+        }
+        
+        /* Specific fix for accordion content */
+        .gr-accordion .gr-accordion-content {
+            overflow: visible !important;
+        }
+        
+        /* Prevent parent hover effects from affecting dropdown positioning */
+        .gr-group:hover .gr-dropdown,
+        .card:hover .gr-dropdown,
+        .settings-card:hover .gr-dropdown {
+            transform: none !important;
+        }
+        
+        /* Ensure dropdown stays in place during parent transforms */
+        .gr-dropdown {
+            will-change: auto !important;
+        }
+        
+        /* Override any transform effects on dropdown containers */
+        .gr-group:hover,
+        .card:hover,
+        .settings-card:hover {
+            transform: none !important;
+        }
+        
+        /* Ensure dropdown trigger button is properly styled */
+        .gr-dropdown button,
+        .gr-dropdown .dropdown-toggle {
+            background: var(--bg-primary) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 12px !important;
+            color: var(--text-primary) !important;
+            padding: 10px 15px !important;
+            width: 100% !important;
+            text-align: left !important;
+            position: relative !important;
+            z-index: 1 !important;
+        }
+        
+        .gr-dropdown button:hover,
+        .gr-dropdown .dropdown-toggle:hover {
+            border-color: var(--accent-color) !important;
+            background: var(--bg-secondary) !important;
+        }
+        
+        /* Arrow icon styling */
+        .gr-dropdown button::after,
+        .gr-dropdown .dropdown-toggle::after {
+            content: '▼' !important;
+            float: right !important;
+            transition: transform 0.2s ease !important;
+        }
+        
+        .gr-dropdown button[aria-expanded="true"]::after,
+        .gr-dropdown .dropdown-toggle.open::after {
+            transform: rotate(180deg) !important;
+        }
+        
+        /* Labels */
+        label, .gr-label {
+            color: var(--text-primary) !important;
+            font-weight: 500 !important;
+            font-size: 0.95em !important;
+            margin-bottom: 8px !important;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Sliders */
+        .gr-slider input[type="range"] {
+            background: rgba(255, 255, 255, 0.1) !important;
+            border-radius: 10px !important;
+            height: 8px !important;
+        }
+        
+        .gr-slider input[type="range"]::-webkit-slider-thumb {
+            background: linear-gradient(135deg, #667eea, #764ba2) !important;
+            border: 2px solid white !important;
+            width: 20px !important;
+            height: 20px !important;
+            border-radius: 50% !important;
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.5) !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+        }
+        
+        .gr-slider input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2) !important;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.7) !important;
+        }
+        
+        /* Accordion Styling - Compact */
+        .gr-accordion {
+            background: var(--bg-secondary) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 12px !important;
+            overflow: hidden !important;
+            margin: 12px 0 !important;
+        }
+        
+        .gr-accordion-header {
+            background: var(--bg-primary) !important;
+            padding: 12px 15px !important;
+            font-weight: 600 !important;
+            color: var(--text-primary) !important;
+            transition: all 0.3s ease !important;
+            font-size: 0.95em !important;
+        }
+        
+        .gr-accordion-header:hover {
+            background: var(--bg-secondary) !important;
+        }
+        
+        /* Radio Buttons */
+        .gr-radio {
+            gap: 15px !important;
+        }
+        
+        .gr-radio label {
+            background: var(--bg-primary) !important;
+            border: 2px solid var(--border-color) !important;
+            border-radius: 12px !important;
+            padding: 15px 25px !important;
+            transition: all 0.3s ease !important;
+            cursor: pointer !important;
+            position: relative !important;
+            overflow: hidden !important;
+        }
+        
+        .gr-radio label:hover {
+            background: var(--bg-secondary) !important;
+            border-color: var(--accent-color) !important;
+            transform: translateY(-2px) !important;
+        }
+        
+        .gr-radio input[type="radio"]:checked + label {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2)) !important;
+            border-color: rgba(102, 126, 234, 0.5) !important;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3) !important;
+        }
+        
+        /* Voice Grid Layout */
+        .voice-grid {
+            display: grid !important;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+            gap: 10px !important;
+            max-height: 400px !important;
+            overflow-y: auto !important;
+            padding: 10px !important;
+            background: var(--bg-secondary) !important;
+            border-radius: 15px !important;
+            border: 1px solid var(--border-color) !important;
+        }
+        
+        .voice-grid .gr-radio {
+            display: contents !important;
+        }
+        
+        .voice-grid label {
+            background: var(--bg-primary) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 8px !important;
+            padding: 8px 12px !important;
+            margin: 0 !important;
+            font-size: 0.85em !important;
+            text-align: center !important;
+            transition: all 0.2s ease !important;
+            cursor: pointer !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            min-height: 40px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        
+        .voice-grid label:hover {
+            background: rgba(102, 126, 234, 0.2) !important;
+            border-color: var(--accent-color) !important;
+            transform: scale(1.02) !important;
+        }
+        
+        /* Multiple selectors to ensure Gradio compatibility */
+        .voice-grid input[type="radio"]:checked + label,
+        .voice-grid input:checked + label,
+        .voice-grid .gr-radio input:checked + label,
+        .voice-grid [data-testid="radio"] input:checked + label {
+            background: linear-gradient(135deg, #667eea, #764ba2) !important;
+            border: 2px solid #667eea !important;
+            color: white !important;
+            font-weight: 700 !important;
+            box-shadow: 
+                0 4px 20px rgba(102, 126, 234, 0.6),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+            transform: scale(1.05) !important;
+            z-index: 10 !important;
+            position: relative !important;
+        }
+        
+        /* Ensure selected state persists even on hover */
+        .voice-grid input[type="radio"]:checked + label:hover,
+        .voice-grid input:checked + label:hover,
+        .voice-grid .gr-radio input:checked + label:hover,
+        .voice-grid [data-testid="radio"] input:checked + label:hover {
+            background: linear-gradient(135deg, #5a67d8, #6b46c1) !important;
+            transform: scale(1.05) !important;
+            border: 2px solid #5a67d8 !important;
+        }
+        
+        .voice-grid input[type="radio"] {
+            display: none !important;
+        }
+        
+        /* Add a checkmark or indicator for selected voice */
+        .voice-grid input[type="radio"]:checked + label::after,
+        .voice-grid input:checked + label::after,
+        .voice-grid .gr-radio input:checked + label::after,
+        .voice-grid [data-testid="radio"] input:checked + label::after {
+            content: '✓' !important;
+            position: absolute !important;
+            top: 4px !important;
+            right: 6px !important;
+            font-size: 14px !important;
+            font-weight: bold !important;
+            color: white !important;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;
+        }
+        
+        /* Ensure the label has relative positioning for the checkmark */
+        .voice-grid label {
+            position: relative !important;
+        }
+        
+        /* Add a subtle glow animation for selected voice */
+        .voice-grid input[type="radio"]:checked + label,
+        .voice-grid input:checked + label,
+        .voice-grid .gr-radio input:checked + label,
+        .voice-grid [data-testid="radio"] input:checked + label {
+            animation: selectedGlow 2s ease-in-out infinite alternate !important;
+        }
+        
+        /* Force override any Gradio default styles */
+        .voice-grid .gr-radio label[data-selected="true"],
+        .voice-grid label[aria-checked="true"],
+        .voice-grid label.selected,
+        .voice-grid label.voice-selected {
+            background: linear-gradient(135deg, #667eea, #764ba2) !important;
+            border: 2px solid #667eea !important;
+            color: white !important;
+            font-weight: 700 !important;
+            transform: scale(1.05) !important;
+            box-shadow: 
+                0 4px 20px rgba(102, 126, 234, 0.6),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+            z-index: 10 !important;
+            position: relative !important;
+        }
+        
+        /* Checkmark for custom selected class */
+        .voice-grid label.voice-selected::after,
+        .voice-grid label[data-selected="true"]::after {
+            content: '✓' !important;
+            position: absolute !important;
+            top: 4px !important;
+            right: 6px !important;
+            font-size: 14px !important;
+            font-weight: bold !important;
+            color: white !important;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;
+        }
+        
+        /* Animation for custom selected class */
+        .voice-grid label.voice-selected,
+        .voice-grid label[data-selected="true"] {
+            animation: selectedGlow 2s ease-in-out infinite alternate !important;
+        }
+        
+        @keyframes selectedGlow {
+            0% { 
+                box-shadow: 
+                    0 4px 20px rgba(102, 126, 234, 0.6),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+            }
+            100% { 
+                box-shadow: 
+                    0 6px 30px rgba(102, 126, 234, 0.8),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+            }
+        }
+        
+        /* Checkboxes */
+        .gr-checkbox {
+            background: var(--bg-primary) !important;
+            border: 2px solid var(--border-color) !important;
+            border-radius: 8px !important;
+            transition: all 0.3s ease !important;
+        }
+        
+        .gr-checkbox:checked {
+            background: linear-gradient(135deg, #667eea, #764ba2) !important;
+            border-color: transparent !important;
+        }
+        
+        /* Audio Component */
+        .gr-audio {
+            background: var(--bg-secondary) !important;
+            border-radius: 15px !important;
+            padding: 20px !important;
+        }
+        
+        /* Section Headers - Compact */
+        h2, h3 {
+            color: var(--text-primary) !important;
+            font-weight: 600 !important;
+            margin: 10px 0 8px 0 !important;
+            position: relative !important;
+            padding-left: 12px !important;
+            font-size: 1.05em !important;
+            line-height: 1.2 !important;
+        }
+        
+        h2::before, h3::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 2px;
+            height: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 2px;
+        }
+        
+        /* Settings Group Headers - Smaller and more subtle */
+        .gr-group h3, .settings-card h3 {
+            font-size: 1.05em !important;
+            font-weight: 500 !important;
+            margin: 10px 0 8px 0 !important;
+            padding-left: 10px !important;
+            color: var(--text-primary) !important;
+        }
+        
+        .gr-group h3::before, .settings-card h3::before {
+            width: 2px !important;
+            height: 50% !important;
+        }
+        
+        /* Info Text */
+        .gr-info {
+            color: var(--text-muted) !important;
+            font-size: 0.85em !important;
+            font-style: italic !important;
+        }
+        
+        /* Markdown Styling */
+        .gr-markdown {
+            color: var(--text-primary) !important;
+            line-height: 1.6 !important;
+        }
+        
+        .gr-markdown h3 {
+            font-size: 1.05em !important;
+            font-weight: 500 !important;
+            margin: 8px 0 6px 0 !important;
+            padding-left: 8px !important;
+            color: var(--text-primary) !important;
+        }
+        
+        .gr-markdown h3::before {
+            width: 2px !important;
+            height: 45% !important;
+        }
+        
+        .gr-markdown h4 {
+            font-size: 0.95em !important;
+            font-weight: 500 !important;
+            margin: 6px 0 4px 0 !important;
+            padding-left: 6px !important;
+            color: var(--text-secondary) !important;
+        }
+        
+        .gr-markdown h4::before {
+            width: 1.5px !important;
+            height: 40% !important;
+        }
+        
+        .gr-markdown strong {
+            color: var(--text-primary) !important;
+            font-weight: 600 !important;
+        }
+        
+        .gr-markdown code {
+            background: var(--bg-primary) !important;
+            padding: 2px 6px !important;
+            border-radius: 4px !important;
+            font-family: 'Fira Code', monospace !important;
+        }
+        
+        /* Status Output */
+        .gr-textbox[readonly] {
+            background: rgba(0, 255, 0, 0.05) !important;
+            border-color: rgba(0, 255, 0, 0.2) !important;
+            color: rgba(0, 255, 0, 0.9) !important;
+        }
+        
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 5px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #764ba2, #667eea);
+        }
+        
+        /* Loading Animation */
+        .gr-loading {
+            color: #667eea !important;
+        }
+        
+        /* Feature Cards - Compact */
+        .feature-card {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            border-radius: 12px;
+            padding: 12px;
+            margin: 5px;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+        
+        /* Glow Effects */
+        .glow {
+            box-shadow: 
+                0 0 20px rgba(102, 126, 234, 0.5),
+                0 0 40px rgba(102, 126, 234, 0.3),
+                0 0 60px rgba(102, 126, 234, 0.1);
+        }
+        
+        /* Responsive Design - Compact */
+        @media (max-width: 768px) {
+            .main-title {
+                font-size: 2.2em;
+            }
+            
+            .subtitle {
+                font-size: 0.9em;
+                margin-bottom: 15px;
+            }
+            
+            .generate-btn {
+                width: 100% !important;
+                padding: 12px 25px !important;
+                font-size: 1.0em !important;
+            }
+            
+            .card, .settings-card, .gr-group {
+                padding: 12px !important;
+                margin: 5px 0 !important;
+            }
+            
+            .feature-card {
+                padding: 8px;
+                margin: 3px;
+            }
+        }
+        
+        /* Additional light mode fixes */
+        .light .main-title,
+        [data-theme="light"] .main-title {
+            text-shadow: 0 0 40px rgba(102, 126, 234, 0.3) !important;
+        }
+        
+        .light .subtitle,
+        [data-theme="light"] .subtitle {
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1) !important;
+        }
+        
+        /* Dark Theme Overrides */
+        .dark {
+            --tw-bg-opacity: 0 !important;
+        }
+        
+        /* Custom Animations */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        """
+        + """
+        <script>
+        // Theme detection and handling
+        function updateTheme() {
+            const container = document.querySelector('.gradio-container');
+            const body = document.body;
+            
+            // Check for Gradio's theme classes
+            if (body.classList.contains('light') || 
+                body.hasAttribute('data-theme') && body.getAttribute('data-theme') === 'light' ||
+                container && (container.classList.contains('light') || 
+                container.hasAttribute('data-theme') && container.getAttribute('data-theme') === 'light')) {
+                container.classList.add('light');
+                container.setAttribute('data-theme', 'light');
+            } else {
+                container.classList.remove('light');
+                container.removeAttribute('data-theme');
+            }
+        }
+        
+        // Run on load
+        document.addEventListener('DOMContentLoaded', updateTheme);
+        
+        // Watch for theme changes
+        const observer = new MutationObserver(updateTheme);
+        observer.observe(document.body, { 
+            attributes: true, 
+            attributeFilter: ['class', 'data-theme'],
+            subtree: true 
+        });
+        
+        // Also watch for system theme changes
+        if (window.matchMedia) {
+            window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', updateTheme);
+        }
+        
+        // Voice selection highlighting fix
+        function setupVoiceSelection() {
+            const voiceGrids = document.querySelectorAll('.voice-grid');
+            voiceGrids.forEach(grid => {
+                const radioInputs = grid.querySelectorAll('input[type="radio"]');
+                radioInputs.forEach(input => {
+                    input.addEventListener('change', function() {
+                        // Remove selected class from all labels in this grid
+                        const allLabels = grid.querySelectorAll('label');
+                        allLabels.forEach(label => {
+                            label.classList.remove('voice-selected');
+                            label.removeAttribute('data-selected');
+                        });
+                        
+                        // Add selected class to the current label
+                        if (this.checked) {
+                            const label = this.nextElementSibling;
+                            if (label && label.tagName === 'LABEL') {
+                                label.classList.add('voice-selected');
+                                label.setAttribute('data-selected', 'true');
+                            }
+                        }
+                    });
+                });
+            });
+        }
+        
+        // Run voice selection setup after DOM loads and when content changes
+        document.addEventListener('DOMContentLoaded', setupVoiceSelection);
+        
+        // Also run when new content is added (Gradio dynamic updates)
+        const contentObserver = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.addedNodes.length > 0) {
+                    setupVoiceSelection();
+                }
+            });
+        });
+        
+        contentObserver.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        </script>
         """
     ) as demo:
         
-        # Header
+        # Header with enhanced styling
         gr.Markdown("""
-        <div class="main-title">
-        ✨ ULTIMATE TTS STUDIO PRO ✨
-        </div>
-        <div class="subtitle">
-        🎭 ChatterboxTTS + Kokoro TTS + Fish Speech | SUP3R EDITION 🚀<br/>
-        <strong>Advanced Text-to-Speech with Multiple Engines, Voice Presets, Audio Effects & Export Options</strong>
+        <div class="fade-in">
+            <div class="main-title">
+            ✨ ULTIMATE TTS STUDIO PRO ✨
+            </div>
+            <div class="subtitle">
+            🎭 ChatterboxTTS + Kokoro TTS + Fish Speech | SUP3R EDITION 🚀<br/>
+            <strong>Advanced Text-to-Speech with Multiple Engines, Voice Presets, Audio Effects & Export Options</strong>
+            </div>
         </div>
         
-        <div style="text-align: center; margin: 20px 0; padding: 15px; background: linear-gradient(90deg, rgba(102,126,234,0.1), rgba(118,75,162,0.1)); border-radius: 10px; border: 1px solid rgba(102,126,234,0.2);">
-        🔥 <strong>Choose between ChatterboxTTS (reference audio cloning) and Kokoro TTS (pre-trained voices) for your text-to-speech needs!</strong> 🔥
+        <div style="display: flex; justify-content: center; gap: 10px; margin: 15px 0;">
+            <div class="feature-card" style="flex: 1;">
+                <h3 style="margin: 0 0 5px 0; padding: 0; font-size: 0.9em;">🎤 Voice Cloning</h3>
+                <p style="margin: 0; opacity: 0.8; font-size: 0.8em;">Clone any voice with ChatterboxTTS</p>
+            </div>
+            <div class="feature-card" style="flex: 1;">
+                <h3 style="margin: 0 0 5px 0; padding: 0; font-size: 0.9em;">🗣️ Pre-trained Voices</h3>
+                <p style="margin: 0; opacity: 0.8; font-size: 0.8em;">30+ high-quality Kokoro voices</p>
+            </div>
+            <div class="feature-card" style="flex: 1;">
+                <h3 style="margin: 0 0 5px 0; padding: 0; font-size: 0.9em;">🎵 Audio Effects</h3>
+                <p style="margin: 0; opacity: 0.8; font-size: 0.8em;">Professional audio enhancement</p>
+            </div>
         </div>
         """)
         
-        # Main input section
+        # Model Management Section - Compact Version
+        with gr.Accordion("🎛️ Model Management", open=True, elem_classes=["fade-in"]):
+            gr.Markdown("*Load only the models you need to save memory.*", elem_classes=["fade-in"])
+            
+            # Compact model status display
+            model_status_display = gr.Markdown(
+                value=get_model_status(),
+                elem_classes=["fade-in"],
+                visible=False  # Hide the detailed status by default
+            )
+            
+            with gr.Row():
+                # ChatterboxTTS Management - Compact
+                with gr.Column():
+                    with gr.Row():
+                        gr.Markdown("🎤 **ChatterboxTTS**", elem_classes=["fade-in"])
+                        chatterbox_status = gr.Markdown(
+                            value="⭕ Not loaded" if CHATTERBOX_AVAILABLE else "❌ Not available",
+                            elem_classes=["fade-in"]
+                        )
+                    with gr.Row():
+                        load_chatterbox_btn = gr.Button(
+                            "🔄 Load",
+                            variant="primary",
+                            size="sm",
+                            visible=CHATTERBOX_AVAILABLE,
+                            elem_classes=["fade-in"],
+                            scale=1
+                        )
+                        unload_chatterbox_btn = gr.Button(
+                            "🗑️ Unload",
+                            variant="secondary",
+                            size="sm",
+                            visible=CHATTERBOX_AVAILABLE,
+                            elem_classes=["fade-in"],
+                            scale=1
+                        )
+                
+                # Kokoro TTS Management - Compact
+                with gr.Column():
+                    with gr.Row():
+                        gr.Markdown("🗣️ **Kokoro TTS**", elem_classes=["fade-in"])
+                        kokoro_status = gr.Markdown(
+                            value="⭕ Not loaded" if KOKORO_AVAILABLE else "❌ Not available",
+                            elem_classes=["fade-in"]
+                        )
+                    with gr.Row():
+                        load_kokoro_btn = gr.Button(
+                            "🔄 Load",
+                            variant="primary",
+                            size="sm",
+                            visible=KOKORO_AVAILABLE,
+                            elem_classes=["fade-in"],
+                            scale=1
+                        )
+                        unload_kokoro_btn = gr.Button(
+                            "🗑️ Unload",
+                            variant="secondary",
+                            size="sm",
+                            visible=KOKORO_AVAILABLE,
+                            elem_classes=["fade-in"],
+                            scale=1
+                        )
+                
+                # Fish Speech Management - Compact
+                with gr.Column():
+                    with gr.Row():
+                        gr.Markdown("🐟 **Fish Speech**", elem_classes=["fade-in"])
+                        fish_status = gr.Markdown(
+                            value="⭕ Not loaded" if FISH_SPEECH_AVAILABLE else "❌ Not available",
+                            elem_classes=["fade-in"]
+                        )
+                    with gr.Row():
+                        load_fish_btn = gr.Button(
+                            "🔄 Load",
+                            variant="primary",
+                            size="sm",
+                            visible=FISH_SPEECH_AVAILABLE,
+                            elem_classes=["fade-in"],
+                            scale=1
+                        )
+                        unload_fish_btn = gr.Button(
+                            "🗑️ Unload",
+                            variant="secondary",
+                            size="sm",
+                            visible=FISH_SPEECH_AVAILABLE,
+                            elem_classes=["fade-in"],
+                            scale=1
+                        )
+        
+        # Main input section with glassmorphism
         with gr.Row():
             with gr.Column(scale=3):
-                # Text input
+                # Text input with enhanced styling
                 text = gr.Textbox(
-                    value="Hello! This is a demonstration of the ULTIMATE TTS STUDIO. You can choose between ChatterboxTTS and Fish Speach for custom voice cloning or Kokoro TTS for high-quality pre-trained voices.",
+                    value="Hello! This is a demonstration of the ULTIMATE TTS STUDIO. You can choose between ChatterboxTTS and Fish Speech for custom voice cloning or Kokoro TTS for high-quality pre-trained voices.",
                     label="📝 Text to synthesize",
-                    lines=4,
-                    placeholder="Enter your text here..."
+                    lines=5,
+                    placeholder="Enter your text here...",
+                    elem_classes=["fade-in"]
                 )
                 
-                # TTS Engine Selection
+                # TTS Engine Selection with custom styling
                 tts_engine = gr.Radio(
                     choices=[
-                        ("🎤 ChatterboxTTS (Reference Audio Cloning)", "ChatterboxTTS"),
-                        ("🗣️ Kokoro TTS (Pre-trained Voices)", "Kokoro TTS"),
-                        ("🐟 Fish Speech (Text-to-Speech)", "Fish Speech")
+                        ("🎤 ChatterboxTTS - Voice Cloning", "ChatterboxTTS"),
+                        ("🗣️ Kokoro TTS - Pre-trained Voices", "Kokoro TTS"),
+                        ("🐟 Fish Speech - Natural TTS", "Fish Speech")
                     ],
-                    value="ChatterboxTTS" if chatterbox_available else "Kokoro TTS" if kokoro_available else "Fish Speech",
+                    value="ChatterboxTTS" if CHATTERBOX_AVAILABLE else "Kokoro TTS" if KOKORO_AVAILABLE else "Fish Speech",
                     label="🎯 Select TTS Engine",
-                    info="Choose your preferred text-to-speech engine"
+                    info="Choose your preferred text-to-speech engine (auto-selects when you load a model)",
+                    elem_classes=["fade-in"]
                 )
             
             with gr.Column(scale=2):
-                # Audio output section
+                # Audio output section with glow effect
                 audio_output = gr.Audio(
                     label="🎵 Generated Audio",
-                    show_download_button=True
+                    show_download_button=True,
+                    elem_classes=["fade-in", "glow"]
                 )
                 
-                # Status
+                # Status with custom styling
                 status_output = gr.Textbox(
                     label="📊 Status",
                     lines=2,
-                    interactive=False
+                    interactive=False,
+                    elem_classes=["fade-in"]
                 )
         
-        # Generate button - single prominent button
+        # Generate button with enhanced animation
         generate_btn = gr.Button(
             "🚀 Generate Speech",
             variant="primary",
             size="lg",
-            elem_classes=["generate-btn"]
+            elem_classes=["generate-btn", "fade-in"]
         )
         
         # Engine-specific settings - All visible at once for easy access
-        gr.Markdown("## 🎛️ TTS Engine Settings")
-        gr.Markdown("*Configure settings for all engines below. Only the selected engine will be used for generation.*")
+        gr.Markdown("## 🎛️ TTS Engine Settings", elem_classes=["fade-in"])
+        gr.Markdown("*Configure settings for all engines below. Only the selected engine will be used for generation.*", elem_classes=["fade-in"])
         
         with gr.Row():
             with gr.Column():
                 # ChatterboxTTS Controls
-                if chatterbox_available:
+                if CHATTERBOX_AVAILABLE:
                     with gr.Group() as chatterbox_controls:
-                        gr.Markdown("### 🎤 ChatterboxTTS Settings")
+                        gr.Markdown("**🎤 ChatterboxTTS - Voice cloning from reference audio**")
                         
                         with gr.Row():
                             with gr.Column(scale=2):
@@ -1199,7 +2414,8 @@ def create_gradio_interface():
                                     sources=["upload", "microphone"],
                                     type="filepath",
                                     label="🎤 Reference Audio File (Optional)",
-                                    value="https://storage.googleapis.com/chatterbox-demo-samples/prompts/female_shadowheart4.flac"
+                                    value="https://storage.googleapis.com/chatterbox-demo-samples/prompts/female_shadowheart4.flac",
+                                    elem_classes=["fade-in"]
                                 )
                             
                             with gr.Column(scale=1):
@@ -1207,16 +2423,18 @@ def create_gradio_interface():
                                     0.25, 2, step=0.05,
                                     label="🎭 Exaggeration",
                                     value=0.5,
-                                    info="Higher = more dramatic"
+                                    info="Higher = more dramatic",
+                                    elem_classes=["fade-in"]
                                 )
                                 chatterbox_cfg_weight = gr.Slider(
                                     0.2, 1, step=0.05,
                                     label="⚡ CFG Weight",
                                     value=0.5,
-                                    info="Speed vs quality"
+                                    info="Speed vs quality",
+                                    elem_classes=["fade-in"]
                                 )
                         
-                        with gr.Accordion("🔧 Advanced ChatterboxTTS Settings", open=False):
+                        with gr.Accordion("🔧 Advanced ChatterboxTTS Settings", open=False, elem_classes=["fade-in"]):
                             with gr.Row():
                                 chatterbox_temperature = gr.Slider(
                                     0.05, 5, step=0.05,
@@ -1238,8 +2456,7 @@ def create_gradio_interface():
                 else:
                     # Placeholder when ChatterboxTTS is not available
                     with gr.Group():
-                        gr.Markdown("### 🎤 ChatterboxTTS Settings")
-                        gr.Markdown("*ChatterboxTTS not available - please check installation*")
+                        gr.Markdown("<div style='text-align: center; padding: 40px; opacity: 0.5;'>**🎤 ChatterboxTTS** - ⚠️ Not available - please check installation</div>")
                         # Create dummy components to maintain consistent interface
                         chatterbox_ref_audio = gr.Audio(visible=False, value=None)
                         chatterbox_exaggeration = gr.Slider(visible=False, value=0.5)
@@ -1249,43 +2466,47 @@ def create_gradio_interface():
                         chatterbox_seed = gr.Number(visible=False, value=0)
                 
                 # Kokoro TTS Controls
-                if kokoro_available:
+                if KOKORO_AVAILABLE:
                     with gr.Group() as kokoro_controls:
-                        gr.Markdown("### 🗣️ Kokoro TTS Settings")
+                        gr.Markdown("**🗣️ Kokoro TTS - High-quality pre-trained voices**")
                         
+                        # Voice selection grid
+                        gr.Markdown("**🎭 Select Voice**")
+                        gr.Markdown("*Choose from pre-trained voices*", elem_classes=["gr-info"])
+                        
+                        # Create choices as (label, value) pairs
+                        kokoro_voice_choices = [(k, v) for k, v in update_kokoro_voice_choices().items()]
+                        
+                        kokoro_voice = gr.Radio(
+                            choices=kokoro_voice_choices,
+                            value=list(KOKORO_CHOICES.values())[0] if KOKORO_CHOICES else None,
+                            label="",
+                            elem_classes=["fade-in", "voice-grid"],
+                            show_label=False
+                        )
+                        
+                        # Speed control below the voice grid
                         with gr.Row():
-                            with gr.Column():
-                                # Create choices as (label, value) pairs
-                                kokoro_voice_choices = [(k, v) for k, v in update_kokoro_voice_choices().items()]
-                                
-                                kokoro_voice = gr.Dropdown(
-                                    choices=kokoro_voice_choices,
-                                    value=list(KOKORO_CHOICES.values())[0] if KOKORO_CHOICES else None,
-                                    label="🎭 Select Voice",
-                                    info="Choose from pre-trained voices"
-                                )
-                            
-                            with gr.Column():
-                                kokoro_speed = gr.Slider(
-                                    0.5, 2.0, step=0.1,
-                                    label="⚡ Speech Speed",
-                                    value=1.0,
-                                    info="Adjust speaking speed"
-                                )
+                            kokoro_speed = gr.Slider(
+                                0.5, 2.0, step=0.1,
+                                label="⚡ Speech Speed",
+                                value=1.0,
+                                info="Adjust speaking speed",
+                                elem_classes=["fade-in"]
+                            )
                 else:
                     # Placeholder when Kokoro is not available
                     with gr.Group():
-                        gr.Markdown("### 🗣️ Kokoro TTS Settings")
-                        gr.Markdown("*Kokoro TTS not available - please check installation*")
+                        gr.Markdown("<div style='text-align: center; padding: 40px; opacity: 0.5;'>**🗣️ Kokoro TTS** - ⚠️ Not available - please check installation</div>")
                         # Create dummy components
-                        kokoro_voice = gr.Dropdown(visible=False, value=None)
+                        kokoro_voice = gr.Radio(visible=False, value=None, choices=[])
                         kokoro_speed = gr.Slider(visible=False, value=1.0)
             
             with gr.Column():
                 # Fish Speech Controls
-                if fish_speech_available:
+                if FISH_SPEECH_AVAILABLE:
                     with gr.Group() as fish_speech_controls:
-                        gr.Markdown("### 🐟 Fish Speech Settings")
+                        gr.Markdown("**🐟 Fish Speech - Natural text-to-speech synthesis**")
                         
                         with gr.Row():
                             with gr.Column(scale=2):
@@ -1293,41 +2514,44 @@ def create_gradio_interface():
                                     sources=["upload", "microphone"],
                                     type="filepath",
                                     label="🎤 Reference Audio File (Optional)",
-                                    value="https://storage.googleapis.com/chatterbox-demo-samples/prompts/female_shadowheart4.flac"
+                                    value="https://storage.googleapis.com/chatterbox-demo-samples/prompts/female_shadowheart4.flac",
+                                    elem_classes=["fade-in"]
                                 )
                             
                             with gr.Column(scale=1):
                                 fish_ref_text = gr.Textbox(
                                     label="🗣️ Reference Text (Optional)",
-                                    placeholder="Enter reference text here..."
+                                    placeholder="Enter reference text here...",
+                                    elem_classes=["fade-in"]
                                 )
                         
-                        with gr.Accordion("🔧 Advanced Fish Speech Settings", open=False):
+                        with gr.Accordion("🔧 Advanced Fish Speech Settings", open=False, elem_classes=["fade-in"]):
+                            gr.Markdown("<p style='opacity: 0.7; margin-bottom: 15px;'>🔧 Fine-tune Fish Speech generation parameters</p>")
                             with gr.Row():
                                 fish_temperature = gr.Slider(
-                                    0.05, 5, step=0.05,
+                                    0.1, 1.0, step=0.05,
                                     label="🌡️ Temperature",
                                     value=0.8,
-                                    info="Higher = more creative"
+                                    info="Higher = more creative (0.1-1.0)"
                                 )
                                 fish_top_p = gr.Slider(
                                     0.1, 1.0, step=0.05,
                                     label="🎭 Top P",
                                     value=0.8,
-                                    info="Controls diversity of generated text"
+                                    info="Controls diversity (0.1-1.0)"
                                 )
                                 fish_repetition_penalty = gr.Slider(
-                                    0.1, 2.0, step=0.05,
+                                    0.9, 2.0, step=0.05,
                                     label="🔄 Repetition Penalty",
                                     value=1.1,
-                                    info="Controls the likelihood of repeating tokens"
+                                    info="Reduces repetition (0.9-2.0)"
                                 )
                             with gr.Row():
                                 fish_max_tokens = gr.Slider(
                                     100, 2000, step=100,
                                     label="🔢 Max Tokens",
                                     value=1024,
-                                    info="Maximum number of tokens to generate"
+                                    info="Maximum tokens per chunk"
                                 )
                                 fish_seed = gr.Number(
                                     value=None,
@@ -1335,12 +2559,12 @@ def create_gradio_interface():
                                     info="For reproducible results"
                                 )
                             
-
+                            gr.Markdown("### 📝 Text Processing")
+                            gr.Markdown("<p style='opacity: 0.7; margin-bottom: 10px;'>Fish Speech automatically splits long texts into chunks for better quality</p>")
                 else:
                     # Placeholder when Fish Speech is not available
                     with gr.Group():
-                        gr.Markdown("### 🐟 Fish Speech Settings")
-                        gr.Markdown("*Fish Speech not available - please check installation*")
+                        gr.Markdown("<div style='text-align: center; padding: 40px; opacity: 0.5;'>**🐟 Fish Speech** - ⚠️ Not available - please check installation</div>")
                         # Create dummy components
                         fish_ref_audio = gr.Audio(visible=False, value=None)
                         fish_ref_text = gr.Textbox(visible=False, value="")
@@ -1351,93 +2575,156 @@ def create_gradio_interface():
                         fish_seed = gr.Number(visible=False, value=None)
         
         # Audio Effects in a separate expandable section
-        with gr.Accordion("🎵 Audio Effects - Professional Enhancement", open=True):
-            gr.Markdown("### Add professional audio effects to enhance your generated speech")
+        with gr.Accordion("🎵 Audio Effects Studio", open=False, elem_classes=["fade-in"]):
+            gr.Markdown("""
+            <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)); 
+                        padding: 12px; border-radius: 12px; margin-bottom: 15px;'>
+                <h3 style='margin: 0 0 5px 0; padding: 0; font-size: 1.0em;'>🎚️ Professional Audio Processing</h3>
+                <p style='margin: 0; opacity: 0.8; font-size: 0.85em;'>Add studio-quality effects to enhance your generated speech</p>
+            </div>
+            """)
             
             # Volume and EQ Section
             with gr.Row():
                 with gr.Column():
                     gr.Markdown("#### 🔊 Volume & EQ Settings")
-                    gain_db = gr.Slider(-20, 20, step=0.5, label="🎚️ Gain/Volume (dB)", value=0, info="Boost or reduce overall volume")
+                    gain_db = gr.Slider(-20, 20, step=0.5, label="🎚️ Master Gain (dB)", value=0, 
+                                       info="Boost or reduce overall volume", elem_classes=["fade-in"])
                     
-                    enable_eq = gr.Checkbox(label="Enable 3-Band EQ", value=False)
+                    enable_eq = gr.Checkbox(label="Enable 3-Band EQ", value=False, elem_classes=["fade-in"])
                     with gr.Row():
-                        eq_bass = gr.Slider(-12, 12, step=0.5, label="🔈 Bass (dB)", value=0, info="Low frequencies (80-250 Hz)")
-                        eq_mid = gr.Slider(-12, 12, step=0.5, label="🔉 Mid (dB)", value=0, info="Mid frequencies (250-4000 Hz)")
-                        eq_treble = gr.Slider(-12, 12, step=0.5, label="🔊 Treble (dB)", value=0, info="High frequencies (4000+ Hz)")
+                        eq_bass = gr.Slider(-12, 12, step=0.5, label="🔈 Bass", value=0, 
+                                          info="80-250 Hz", elem_classes=["fade-in"])
+                        eq_mid = gr.Slider(-12, 12, step=0.5, label="🔉 Mid", value=0, 
+                                         info="250-4000 Hz", elem_classes=["fade-in"])
+                        eq_treble = gr.Slider(-12, 12, step=0.5, label="🔊 Treble", value=0, 
+                                            info="4000+ Hz", elem_classes=["fade-in"])
             
-            # Effects Section
+            # Effects Section with better layout
             with gr.Row():
                 with gr.Column():
-                    gr.Markdown("#### 🏛️ Reverb Settings")
-                    enable_reverb = gr.Checkbox(label="Enable Reverb", value=False)
-                    with gr.Row():
-                        reverb_room = gr.Slider(0.1, 1.0, step=0.1, label="Room Size", value=0.3)
-                        reverb_damping = gr.Slider(0.1, 1.0, step=0.1, label="Damping", value=0.5)
-                        reverb_wet = gr.Slider(0.1, 0.8, step=0.1, label="Reverb Amount", value=0.3)
+                    gr.Markdown("#### 🏛️ Spatial Effects")
+                    enable_reverb = gr.Checkbox(label="Enable Reverb", value=False, elem_classes=["fade-in"])
+                    with gr.Column():
+                        reverb_room = gr.Slider(0.1, 1.0, step=0.1, label="Room Size", value=0.3, elem_classes=["fade-in"])
+                        reverb_damping = gr.Slider(0.1, 1.0, step=0.1, label="Damping", value=0.5, elem_classes=["fade-in"])
+                        reverb_wet = gr.Slider(0.1, 0.8, step=0.1, label="Wet Mix", value=0.3, elem_classes=["fade-in"])
                 
                 with gr.Column():
-                    gr.Markdown("#### 🔊 Echo Settings")
-                    enable_echo = gr.Checkbox(label="Enable Echo", value=False)
-                    with gr.Row():
-                        echo_delay = gr.Slider(0.1, 1.0, step=0.1, label="Echo Delay (s)", value=0.3)
-                        echo_decay = gr.Slider(0.1, 0.9, step=0.1, label="Echo Decay", value=0.5)
+                    gr.Markdown("#### 🔊 Time-Based Effects")
+                    enable_echo = gr.Checkbox(label="Enable Echo", value=False, elem_classes=["fade-in"])
+                    with gr.Column():
+                        echo_delay = gr.Slider(0.1, 1.0, step=0.1, label="Delay Time (s)", value=0.3, elem_classes=["fade-in"])
+                        echo_decay = gr.Slider(0.1, 0.9, step=0.1, label="Decay Amount", value=0.5, elem_classes=["fade-in"])
                 
                 with gr.Column():
-                    gr.Markdown("#### 🎼 Pitch Settings")
-                    enable_pitch = gr.Checkbox(label="Enable Pitch Shift", value=False)
-                    pitch_semitones = gr.Slider(-12, 12, step=1, label="Pitch (semitones)", value=0, info="Positive = higher, Negative = lower")
+                    gr.Markdown("#### 🎼 Pitch Effects")
+                    enable_pitch = gr.Checkbox(label="Enable Pitch Shift", value=False, elem_classes=["fade-in"])
+                    pitch_semitones = gr.Slider(-12, 12, step=1, label="Pitch (semitones)", value=0, 
+                                               info="±12 semitones = ±1 octave", elem_classes=["fade-in"])
         
-        # Tips section
-        with gr.Accordion("💡 Tips & Usage Guide", open=False):
-            gr.Markdown("""
-            ### 🎯 Choosing the Right Engine
-            
-            **ChatterboxTTS** - Best for:
-            - Custom voice cloning from reference audio
-            - Matching specific speaking styles or accents  
-            - Creating voices from short audio samples
-            - Fine control over speech characteristics
-            
-            **Kokoro TTS** - Best for:
-            - High-quality pre-trained voices
-            - Consistent voice quality
-            - Multiple language support
-            - Faster generation (no reference audio needed)
-            
-            **Fish Speech** - Best for:
-            - Text-to-speech synthesis from text
-            - Natural-sounding voice generation  
-            - Customization of speech characteristics
-            - Advanced audio processing controls
-            
-            ### 💡 Pro Tips
-            - **Reference Audio**: Use clear, 3-10 second samples for ChatterboxTTS and Fish Speech
-            - **Text Length**: Kokoro has a 5000 character limit, ChatterboxTTS and Fish Speech can handle longer texts
-            - **Effects**: Apply reverb for space, echo for depth, pitch shift for character voices
-            - **Voice Mixing**: Blend Kokoro voices with formulas like "af_heart * 0.7 + af_bella * 0.3"
-            - **Fish Speech Quality**: Uses clean, unprocessed output for best natural sound. Use Audio Effects section for any enhancements.
-            
-            ### 🎵 Audio Effects Guide
-            - **Gain/Volume**: Boost or reduce overall audio level (-20 to +20 dB)
-            - **3-Band EQ**: Fine-tune frequency response
-              - **Bass**: Low frequencies (80-250 Hz) - warmth and fullness
-              - **Mid**: Mid frequencies (250-4000 Hz) - clarity and presence  
-              - **Treble**: High frequencies (4000+ Hz) - brightness and air
-            - **Reverb**: Simulates room acoustics (church, hall, studio)
-            - **Echo**: Adds depth and space to voice
-            - **Pitch Shift**: Change voice character (±12 semitones)
-            
-            ### 🎛️ EQ Tips
-            - **Boost Bass** (+3 to +6 dB): Warmer, fuller voice
-            - **Cut Bass** (-3 to -6 dB): Cleaner, less muddy sound
-            - **Boost Mid** (+2 to +4 dB): More vocal presence and clarity
-            - **Boost Treble** (+2 to +5 dB): Brighter, more articulate speech
-            - **Subtle is better**: Small adjustments (1-3 dB) often work best
-            """)
+
         
-        # Event handlers - No longer need to toggle visibility since all controls stay visible
+        # Footer with credits - Compact
+        gr.Markdown("""
+        <div style='text-align: center; margin-top: 20px; padding: 15px; 
+                    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05), rgba(118, 75, 162, 0.05)); 
+                    border-radius: 12px; border: 1px solid rgba(102, 126, 234, 0.1);'>
+            <p style='opacity: 0.7; margin: 0; font-size: 0.85em;'>
+                Made with ❤️ by SUP3RMASS1VE | 
+                <a href='https://github.com/SUP3RMASS1VE/Ultimate-TTS-Studio-SUP3R-Edition-Pinokio' target='_blank' style='color: #667eea; text-decoration: none;'>GitHub</a> | 
+                <a href='https://discord.gg/mvDcrA57AQ' target='_blank' style='color: #667eea; text-decoration: none;'>Discord</a>
+            </p>
+        </div>
+        """)
         
+        # Model management event handlers - Updated for compact interface with auto-selection
+        def handle_load_chatterbox():
+            success, message = init_chatterbox()
+            if success:
+                chatterbox_status_text = "✅ Loaded (Auto-selected)"
+                # Auto-select ChatterboxTTS engine when loaded
+                selected_engine = "ChatterboxTTS"
+            else:
+                chatterbox_status_text = "❌ Failed to load"
+                selected_engine = gr.update()  # No change to current selection
+            return chatterbox_status_text, selected_engine
+        
+        def handle_unload_chatterbox():
+            message = unload_chatterbox()
+            chatterbox_status_text = "⭕ Not loaded"
+            # Don't change engine selection when unloading
+            return chatterbox_status_text
+        
+        def handle_load_kokoro():
+            success, message = init_kokoro()
+            if success:
+                preload_kokoro_voices()  # Preload voices after loading model
+                kokoro_status_text = "✅ Loaded (Auto-selected)"
+                # Auto-select Kokoro TTS engine when loaded
+                selected_engine = "Kokoro TTS"
+            else:
+                kokoro_status_text = "❌ Failed to load"
+                selected_engine = gr.update()  # No change to current selection
+            return kokoro_status_text, selected_engine
+        
+        def handle_unload_kokoro():
+            message = unload_kokoro()
+            kokoro_status_text = "⭕ Not loaded"
+            # Don't change engine selection when unloading
+            return kokoro_status_text
+        
+        def handle_load_fish():
+            success, message = init_fish_speech()
+            if success:
+                fish_status_text = "✅ Loaded (Auto-selected)"
+                # Auto-select Fish Speech engine when loaded
+                selected_engine = "Fish Speech"
+            else:
+                fish_status_text = "❌ Failed to load"
+                selected_engine = gr.update()  # No change to current selection
+            return fish_status_text, selected_engine
+        
+        def handle_unload_fish():
+            message = unload_fish_speech()
+            fish_status_text = "⭕ Not loaded"
+            # Don't change engine selection when unloading
+            return fish_status_text
+        
+        # ChatterboxTTS management
+        if CHATTERBOX_AVAILABLE:
+            load_chatterbox_btn.click(
+                fn=handle_load_chatterbox,
+                outputs=[chatterbox_status, tts_engine]
+            )
+            unload_chatterbox_btn.click(
+                fn=handle_unload_chatterbox,
+                outputs=[chatterbox_status]
+            )
+        
+        # Kokoro TTS management
+        if KOKORO_AVAILABLE:
+            load_kokoro_btn.click(
+                fn=handle_load_kokoro,
+                outputs=[kokoro_status, tts_engine]
+            )
+            unload_kokoro_btn.click(
+                fn=handle_unload_kokoro,
+                outputs=[kokoro_status]
+            )
+        
+        # Fish Speech management
+        if FISH_SPEECH_AVAILABLE:
+            load_fish_btn.click(
+                fn=handle_load_fish,
+                outputs=[fish_status, tts_engine]
+            )
+            unload_fish_btn.click(
+                fn=handle_unload_fish,
+                outputs=[fish_status]
+            )
+        
+        # Main generation event handler
         generate_btn.click(
             fn=generate_unified_tts,
             inputs=[
