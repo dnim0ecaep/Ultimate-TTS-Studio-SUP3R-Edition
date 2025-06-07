@@ -33,7 +33,11 @@
 ---
 ## 🛠️ Installation
 
-### 1. Clone the repository
+## Option 1. 
+Install via [Pinokio](https://pinokio-home.netlify.app/item?uri=https://github.com/SUP3RMASS1VE/Ultimate-TTS-Studio-SUP3R-Edition-Pinokio).
+
+### Option 2
+1. Clone the repository
 
 ```bash
 git clone https://github.com/SUP3RMASS1VE/Ultimate-TTS-Studio-SUP3R-Edition.git
