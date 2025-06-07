@@ -54,12 +54,6 @@ python -m venv env
   env\Scripts\activate
   ```
 
-* **macOS/Linux**:
-
-  ```bash
-  source env/bin/activate
-  ```
-
 ### 4. Install `uv` (optional but recommended for speed)
 
 ```bash
