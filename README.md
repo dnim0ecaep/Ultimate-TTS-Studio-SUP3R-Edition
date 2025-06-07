@@ -21,6 +21,11 @@ This update introduces improvements to performance, model handling, and the user
 * **Chatterbox** and **Kokoro** models will **automatically download** the first time you click "Load" on each one.
 * **Fish Speech** models must be **downloaded manually** and are not included in the auto-download process.
 
+### 🗣️ New Feature: Custom Kokoro Voices
+
+* **Kokoro** now supports **custom `.pt` voice models**!
+* You can upload your own Kokoro-compatible `.pt` voice files using the **Custom Voice Upload** section in the Kokoro interface.
+
 ---
 ![Screenshot 2025-06-07 204449](https://github.com/user-attachments/assets/d48b4dc0-fca1-47cb-9510-00dcd3d58518)
 
