@@ -62,7 +62,7 @@ pip install uv
 
 ### 5. Install dependencies
 
-#### Install PyTorch (CUDA 12.4 build)
+#### Install PyTorch (CUDA 12.8 build)
 
 ```bash
 uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
