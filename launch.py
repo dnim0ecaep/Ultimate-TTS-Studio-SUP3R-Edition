@@ -78,10 +78,14 @@ torch.nn.utils.parametrize = torch.nn.utils.parametrizations.weight_norm
 # ===== DIRECTORY SETUP =====
 PRESETS_FILE = "voice_presets.json"
 output_folder = os.path.join(os.getcwd(), 'outputs')
+custom_voices_folder = os.path.join(os.getcwd(), 'custom_voices')
 
-# Create only the outputs folder
+# Create necessary folders
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
+
+if not os.path.exists(custom_voices_folder):
+    os.makedirs(custom_voices_folder)
 
 # ===== MODEL INITIALIZATION =====
 CHATTERBOX_MODEL = None
@@ -1007,6 +1011,124 @@ def get_custom_voices():
                 custom_voices[f'👤 Custom: {voice_id}'] = f'custom_{voice_id}'
     return custom_voices
 
+def upload_custom_voice(files, voice_name):
+    """Upload a custom voice file to the custom_voices folder."""
+    if not voice_name or not voice_name.strip():
+        return "Please provide a name for your custom voice."
+    
+    # Sanitize voice name (remove spaces and special characters)
+    voice_name = ''.join(c for c in voice_name if c.isalnum() or c == '_')
+    
+    if not voice_name:
+        return "Invalid voice name. Please use alphanumeric characters."
+    
+    # Check if any files were uploaded
+    if not files:
+        return "Please upload a .pt voice file."
+    
+    # In Gradio, the file object structure depends on the file_count parameter
+    # For file_count="single", files is the file path as a string
+    file_path = files
+    
+    # Check if the uploaded file is a .pt file
+    if not file_path.endswith('.pt'):
+        return "Please upload a valid .pt voice file."
+    
+    # Copy the file to the custom_voices folder with the new name
+    target_file = os.path.join(custom_voices_folder, f"{voice_name}.pt")
+    
+    # If file already exists, remove it
+    if os.path.exists(target_file):
+        os.remove(target_file)
+    
+    # Copy the uploaded file
+    shutil.copy(file_path, target_file)
+    
+    # Try to load the voice to verify it works
+    voice_id = f'custom_{voice_name}'
+    
+    try:
+        # Load the .pt file directly
+        voice_pack = torch.load(target_file, weights_only=True)
+        
+        # Verify that the voice pack is usable with the model
+        # Check if it's a tensor or a list/tuple of tensors
+        if not isinstance(voice_pack, (torch.Tensor, list, tuple)):
+            raise ValueError("The voice file is not in the expected format (should be a tensor or list of tensors)")
+        
+        # If it's a list or tuple, check that it contains tensors
+        if isinstance(voice_pack, (list, tuple)) and (len(voice_pack) == 0 or not isinstance(voice_pack[0], torch.Tensor)):
+            raise ValueError("The voice file does not contain valid tensor data")
+            
+        loaded_voices[voice_id] = voice_pack
+        return f"Custom voice '{voice_name}' uploaded and loaded successfully!"
+    except Exception as e:
+        # If loading fails, remove the file
+        if os.path.exists(target_file):
+            os.remove(target_file)
+        return f"Error loading custom voice: {str(e)}"
+
+def upload_and_refresh(files, voice_name):
+    """Handle custom voice upload and refresh lists."""
+    result = upload_custom_voice(files, voice_name)
+    
+    # If upload was successful, clear the input fields and update voice choices
+    if "successfully" in result:
+        updated_choices = update_kokoro_voice_choices()
+        new_choices = [(k, v) for k, v in updated_choices.items()]
+        return result, get_custom_voice_list(), "", None, gr.update(choices=new_choices)
+    else:
+        return result, get_custom_voice_list(), voice_name, files, gr.update()
+
+def get_custom_voice_list():
+    """Get the list of custom voices for the dataframe."""
+    # Load any manually added custom voices first
+    load_manual_custom_voices()
+    
+    custom_voices = get_custom_voices()
+    if not custom_voices:
+        return [["No custom voices found", "N/A"]]
+    return [[name.replace('👤 Custom: ', ''), "Loaded"] for name in custom_voices.keys()]
+
+def load_manual_custom_voices():
+    """Load custom voices that were manually added to the custom_voices folder."""
+    if not os.path.exists(custom_voices_folder):
+        return
+    
+    custom_voices = get_custom_voices()
+    for voice_name, voice_id in custom_voices.items():
+        # Check if this voice is already loaded
+        if voice_id not in loaded_voices:
+            try:
+                # Extract the actual filename from the voice_id
+                voice_filename = voice_id[7:]  # Remove "custom_" prefix (7 characters)
+                voice_file = f"{voice_filename}.pt"
+                voice_path = os.path.join(custom_voices_folder, voice_file)
+                
+                if os.path.exists(voice_path):
+                    # Load the .pt file directly
+                    voice_pack = torch.load(voice_path, weights_only=True)
+                    
+                    # Verify that the voice pack is usable
+                    if isinstance(voice_pack, (torch.Tensor, list, tuple)):
+                        loaded_voices[voice_id] = voice_pack
+                        print(f"✅ Loaded manually added custom voice: {voice_name}")
+                    else:
+                        print(f"⚠️ Invalid voice format for {voice_name}")
+                else:
+                    print(f"⚠️ Voice file not found: {voice_path}")
+            except Exception as e:
+                print(f"❌ Error loading custom voice {voice_name}: {str(e)}")
+
+def refresh_kokoro_voice_list():
+    """Refresh the Kokoro voice list to include new custom voices."""
+    # Load any manually added custom voices first
+    load_manual_custom_voices()
+    
+    updated_choices = update_kokoro_voice_choices()
+    new_choices = [(k, v) for k, v in updated_choices.items()]
+    return gr.update(choices=new_choices)
+
 def update_kokoro_voice_choices():
     """Update choices with custom voices."""
     updated_choices = KOKORO_CHOICES.copy()
@@ -1029,20 +1151,10 @@ def preload_kokoro_voices():
         except Exception as e:
             print(f"Error loading {voice_name}: {e}")
     
-    # Load custom voices
-    custom_voices = get_custom_voices()
-    for voice_name, voice_id in custom_voices.items():
-        try:
-            voice_file = f"{voice_id.split('_')[1]}.pt"
-            custom_voices_folder = os.path.join(os.getcwd(), 'custom_voices')
-            voice_path = os.path.join(custom_voices_folder, voice_file)
-            
-            if os.path.exists(voice_path):
-                voice_pack = torch.load(voice_path, weights_only=True)
-                loaded_voices[voice_id] = voice_pack
-                print(f"Loaded custom: {voice_name}")
-        except Exception as e:
-            print(f"Error loading custom {voice_name}: {e}")
+    # Load custom voices (both uploaded and manually added)
+    load_manual_custom_voices()
+    
+    print(f"All voices preloaded successfully. Total voices in cache: {len(loaded_voices)}")
 
 def generate_kokoro_tts(text, voice='af_heart', speed=1, effects_settings=None):
     """Generate TTS audio using Kokoro TTS."""
@@ -1062,17 +1174,43 @@ def generate_kokoro_tts(text, voice='af_heart', speed=1, effects_settings=None):
         if voice.startswith('custom_'):
             voice_pack = loaded_voices.get(voice)
             if voice_pack is None:
+                # Try to load the custom voice if it exists in the folder but isn't cached
+                try:
+                    # Extract the actual filename from the voice_id
+                    # voice format: "custom_filename" -> we want "filename.pt"
+                    voice_filename = voice[7:]  # Remove "custom_" prefix (7 characters)
+                    voice_file = f"{voice_filename}.pt"
+                    voice_path = os.path.join(custom_voices_folder, voice_file)
+                    
+                    if os.path.exists(voice_path):
+                        voice_pack = torch.load(voice_path, weights_only=True)
+                        
+                        # Verify that the voice pack is usable
+                        if isinstance(voice_pack, (torch.Tensor, list, tuple)):
+                            loaded_voices[voice] = voice_pack
+                            print(f"✅ Auto-loaded custom voice: {voice}")
+                        else:
+                            return None, f"❌ Invalid voice format for {voice}"
+                    else:
+                        return None, f"❌ Custom voice file not found: {voice_file}"
+                except Exception as e:
+                    return None, f"❌ Error loading custom voice {voice}: {str(e)}"
+                
+            if voice_pack is None:
                 return None, f"❌ Custom voice {voice} not found"
+            # Use American English pipeline for custom voices
+            pipeline = KOKORO_PIPELINES['a']
         else:
             voice_pack = loaded_voices.get(voice)
             if voice_pack is None:
                 pipeline = KOKORO_PIPELINES[voice[0]]
                 voice_pack = pipeline.load_voice(voice)
                 loaded_voices[voice] = voice_pack
+            else:
+                # Get the correct pipeline for pre-trained voices
+                pipeline = KOKORO_PIPELINES[voice[0]]
         
         # Generate audio for each chunk
-        pipeline = KOKORO_PIPELINES[voice[0]]
-        
         for i, chunk in enumerate(text_chunks):
             print(f"Processing chunk {i+1}/{len(text_chunks)}: {chunk[:50]}...")
             
@@ -2494,6 +2632,60 @@ def create_gradio_interface():
                                 info="Adjust speaking speed",
                                 elem_classes=["fade-in"]
                             )
+                        
+                        # Custom Voice Upload Section
+                        with gr.Accordion("👤 Custom Voice Upload", open=False, elem_classes=["fade-in"]):
+                            gr.Markdown("""
+                            <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)); 
+                                        padding: 12px; border-radius: 12px; margin-bottom: 15px;'>
+                                <h3 style='margin: 0 0 5px 0; padding: 0; font-size: 1.0em;'>📁 Upload Your Custom Voices</h3>
+                                <p style='margin: 0; opacity: 0.8; font-size: 0.85em;'>Add your own .pt voice files to use with Kokoro TTS</p>
+                            </div>
+                            """)
+                            
+                            with gr.Row():
+                                with gr.Column(scale=2):
+                                    custom_voice_name = gr.Textbox(
+                                        label='👤 Custom Voice Name', 
+                                        placeholder="Enter a name for your custom voice",
+                                        info="Use only letters, numbers, and underscores",
+                                        elem_classes=["fade-in"]
+                                    )
+                                    
+                                    custom_voice_files = gr.File(
+                                        label="📁 Upload Voice File (.pt)", 
+                                        file_count="single",
+                                        file_types=[".pt"],
+                                        elem_classes=["fade-in"]
+                                    )
+                                    
+                                    with gr.Row():
+                                        upload_btn = gr.Button('📤 Upload Voice', variant='primary', elem_classes=["fade-in"])
+                                        refresh_voices_btn = gr.Button('🔄 Refresh Voices', variant='secondary', elem_classes=["fade-in"])
+                                    
+                                    upload_status = gr.Textbox(label="📊 Upload Status", interactive=False, elem_classes=["fade-in"])
+                                
+                                with gr.Column(scale=1):
+                                    gr.Markdown("**📋 Your Custom Voices**")
+                                    custom_voice_list = gr.Dataframe(
+                                        headers=["Voice Name", "Status"],
+                                        datatype=["str", "str"],
+                                        row_count=(5, "fixed"),
+                                        col_count=(2, "fixed"),
+                                        interactive=False,
+                                        value=get_custom_voice_list(),
+                                        elem_classes=["fade-in"]
+                                    )
+                            
+                            gr.Markdown("""
+                            <div style='margin-top: 10px; padding: 10px; background: rgba(102, 126, 234, 0.05); border-radius: 8px; border-left: 3px solid #667eea;'>
+                                <p style='margin: 0; font-size: 0.85em; opacity: 0.8;'>
+                                    <strong>💡 Tips:</strong> Upload .pt voice files compatible with Kokoro TTS. 
+                                    Custom voices will appear with a 👤 prefix in the voice selector above. 
+                                    Use the refresh button to update the voice list after uploading.
+                                </p>
+                            </div>
+                            """)
                 else:
                     # Placeholder when Kokoro is not available
                     with gr.Group():
@@ -2501,6 +2693,13 @@ def create_gradio_interface():
                         # Create dummy components
                         kokoro_voice = gr.Radio(visible=False, value=None, choices=[])
                         kokoro_speed = gr.Slider(visible=False, value=1.0)
+                        # Dummy custom voice components
+                        custom_voice_name = gr.Textbox(visible=False, value="")
+                        custom_voice_files = gr.File(visible=False, value=None)
+                        upload_btn = gr.Button(visible=False)
+                        refresh_voices_btn = gr.Button(visible=False)
+                        upload_status = gr.Textbox(visible=False, value="")
+                        custom_voice_list = gr.Dataframe(visible=False, value=[])
             
             with gr.Column():
                 # Fish Speech Controls
@@ -2740,6 +2939,27 @@ def create_gradio_interface():
             ],
             outputs=[audio_output, status_output]
         )
+        
+        # Custom voice upload event handlers (only if Kokoro is available)
+        if KOKORO_AVAILABLE:
+            # Upload custom voice
+            upload_btn.click(
+                fn=upload_and_refresh,
+                inputs=[custom_voice_files, custom_voice_name],
+                outputs=[upload_status, custom_voice_list, custom_voice_name, custom_voice_files, kokoro_voice]
+            )
+            
+            # Refresh voice list
+            refresh_voices_btn.click(
+                fn=refresh_kokoro_voice_list,
+                outputs=[kokoro_voice]
+            )
+            
+            # Refresh custom voice list
+            refresh_voices_btn.click(
+                fn=get_custom_voice_list,
+                outputs=[custom_voice_list]
+            )
     
     return demo
 
