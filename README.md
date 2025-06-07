@@ -82,8 +82,6 @@ uv pip install -r requirements.txt
 
 > 💡 If you're not using `uv`, you can just use `pip install` in its place.
 
-Here’s the updated section for the `README.md`, including the Hugging Face token instructions. You can replace the original **“First-Time Setup Tips”** section with this:
-
 ---
 
 ## 🧠 First-Time Setup Tips
