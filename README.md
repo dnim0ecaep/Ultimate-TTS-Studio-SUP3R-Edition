@@ -37,6 +37,8 @@
 Install via [Pinokio](https://pinokio-home.netlify.app/item?uri=https://github.com/SUP3RMASS1VE/Ultimate-TTS-Studio-SUP3R-Edition-Pinokio).
 
 ### Option 2
+[Espeak-ng](https://github.com/espeak-ng/espeak-ng) is needed for Kokoro to work at its best.
+
 1. Clone the repository
 
 ```bash
