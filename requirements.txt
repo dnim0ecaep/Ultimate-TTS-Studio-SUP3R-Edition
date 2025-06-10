@@ -48,4 +48,11 @@ wandb>=0.15.11
 wheel
 kokoro
 
+# eBook to Audiobook conversion dependencies
+ebooklib>=0.18
+PyPDF2>=3.0.0
+beautifulsoup4>=4.11.0
+chardet>=5.0.0
+lxml>=4.9.0
+
 https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
