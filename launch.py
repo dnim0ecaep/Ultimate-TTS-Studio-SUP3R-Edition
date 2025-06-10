@@ -47,6 +47,19 @@ except ImportError:
     FISH_SPEECH_AVAILABLE = False
     print("⚠️ Fish Speech not available. Some features will be disabled.")
 
+# eBook Converter imports
+try:
+    from ebook_converter import (
+        EBookConverter, 
+        get_supported_formats, 
+        analyze_ebook, 
+        convert_ebook_to_text_chunks
+    )
+    EBOOK_CONVERTER_AVAILABLE = True
+except ImportError:
+    EBOOK_CONVERTER_AVAILABLE = False
+    print("⚠️ eBook converter not available. Some features will be disabled.")
+
 # Audio processing imports
 try:
     from scipy.signal import butter, filtfilt, hilbert
@@ -79,6 +92,7 @@ torch.nn.utils.parametrize = torch.nn.utils.parametrizations.weight_norm
 PRESETS_FILE = "voice_presets.json"
 output_folder = os.path.join(os.getcwd(), 'outputs')
 custom_voices_folder = os.path.join(os.getcwd(), 'custom_voices')
+audiobooks_folder = os.path.join(os.getcwd(), 'audiobooks')
 
 # Create necessary folders
 if not os.path.exists(output_folder):
@@ -86,6 +100,9 @@ if not os.path.exists(output_folder):
 
 if not os.path.exists(custom_voices_folder):
     os.makedirs(custom_voices_folder)
+
+if not os.path.exists(audiobooks_folder):
+    os.makedirs(audiobooks_folder)
 
 # ===== MODEL INITIALIZATION =====
 CHATTERBOX_MODEL = None
@@ -1310,6 +1327,242 @@ def save_current_preset(preset_name, tts_engine, **settings):
     else:
         return "❌ Failed to save preset", gr.update()
 
+# ===== EBOOK TO AUDIOBOOK FUNCTIONS =====
+def analyze_ebook_file(file_path: str):
+    """Analyze an uploaded eBook file and return information."""
+    if not EBOOK_CONVERTER_AVAILABLE:
+        return {
+            'success': False,
+            'error': "eBook converter not available. Please install required dependencies.",
+            'chapters': [],
+            'metadata': None
+        }
+    
+    if not file_path:
+        return {
+            'success': False,
+            'error': "No file uploaded",
+            'chapters': [],
+            'metadata': None
+        }
+    
+    try:
+        info = analyze_ebook(file_path)
+        return info
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e),
+            'chapters': [],
+            'metadata': None
+        }
+
+def convert_ebook_to_audiobook(
+    file_path: str,
+    tts_engine: str,
+    selected_chapters: list,
+    max_chunk_length: int = 500,
+    # ChatterboxTTS parameters
+    chatterbox_ref_audio: str = None,
+    chatterbox_exaggeration: float = 0.5,
+    chatterbox_temperature: float = 0.8,
+    chatterbox_cfg_weight: float = 0.5,
+    chatterbox_seed: int = 0,
+    # Kokoro parameters
+    kokoro_voice: str = 'af_heart',
+    kokoro_speed: float = 1.0,
+    # Fish Speech parameters
+    fish_ref_audio: str = None,
+    fish_ref_text: str = None,
+    fish_temperature: float = 0.8,
+    fish_top_p: float = 0.8,
+    fish_repetition_penalty: float = 1.1,
+    fish_max_tokens: int = 1024,
+    fish_seed: int = None,
+    # Effects parameters
+    gain_db: float = 0,
+    enable_eq: bool = False,
+    eq_bass: float = 0,
+    eq_mid: float = 0,
+    eq_treble: float = 0,
+    enable_reverb: bool = False,
+    reverb_room: float = 0.3,
+    reverb_damping: float = 0.5,
+    reverb_wet: float = 0.3,
+    enable_echo: bool = False,
+    echo_delay: float = 0.3,
+    echo_decay: float = 0.5,
+    enable_pitch: bool = False,
+    pitch_semitones: float = 0,
+    # Advanced eBook settings
+    chunk_gap: float = 1.0,
+    chapter_gap: float = 2.0,
+):
+    """Convert eBook to audiobook using selected TTS engine."""
+    if not EBOOK_CONVERTER_AVAILABLE:
+        return None, "❌ eBook converter not available"
+    
+    if not file_path:
+        return None, "❌ No eBook file provided"
+    
+    try:
+        # Convert eBook to text chunks
+        text_chunks, metadata = convert_ebook_to_text_chunks(file_path, max_chunk_length)
+        
+        if not text_chunks:
+            return None, "❌ No text content found in eBook"
+        
+        # Filter chunks based on selected chapters if specified
+        if selected_chapters:
+            # Convert selected chapter indices to set for faster lookup
+            selected_indices = set(selected_chapters)
+            text_chunks = [chunk for chunk in text_chunks if chunk['chapter_index'] in selected_indices]
+        
+        if not text_chunks:
+            return None, "❌ No chapters selected for conversion"
+        
+        # Prepare effects settings
+        effects_settings = {
+            'gain_db': gain_db,
+            'enable_eq': enable_eq,
+            'eq_bass': eq_bass,
+            'eq_mid': eq_mid,
+            'eq_treble': eq_treble,
+            'enable_reverb': enable_reverb,
+            'reverb_room': reverb_room,
+            'reverb_damping': reverb_damping,
+            'reverb_wet': reverb_wet,
+            'enable_echo': enable_echo,
+            'echo_delay': echo_delay,
+            'echo_decay': echo_decay,
+            'enable_pitch': enable_pitch,
+            'pitch_semitones': pitch_semitones,
+        } if any([gain_db != 0, enable_eq, enable_reverb, enable_echo, enable_pitch]) else None
+        
+        # Generate audio for each chunk
+        audio_segments = []
+        total_chunks = len(text_chunks)
+        
+        for i, chunk in enumerate(text_chunks):
+            print(f"Processing chunk {i+1}/{total_chunks}: {chunk['title']}")
+            
+            # Generate TTS for this chunk
+            if tts_engine == "ChatterboxTTS":
+                audio_result, status = generate_chatterbox_tts(
+                    chunk['content'], chatterbox_ref_audio, chatterbox_exaggeration,
+                    chatterbox_temperature, chatterbox_seed, chatterbox_cfg_weight,
+                    max_chunk_length, effects_settings
+                )
+            elif tts_engine == "Kokoro TTS":
+                audio_result, status = generate_kokoro_tts(
+                    chunk['content'], kokoro_voice, kokoro_speed, effects_settings
+                )
+            elif tts_engine == "Fish Speech":
+                audio_result, status = generate_fish_speech_tts(
+                    chunk['content'], fish_ref_audio, fish_ref_text, fish_temperature, fish_top_p,
+                    fish_repetition_penalty, fish_max_tokens, fish_seed, effects_settings
+                )
+            else:
+                return None, f"❌ Invalid TTS engine: {tts_engine}"
+            
+            if audio_result is None:
+                return None, f"❌ Failed to generate audio for chunk {i+1}: {status}"
+            
+            sample_rate, audio_data = audio_result
+            audio_segments.append((sample_rate, audio_data, chunk['title']))
+        
+        # Concatenate all audio segments
+        if not audio_segments:
+            return None, "❌ No audio generated"
+        
+        # Use the sample rate from the first segment
+        final_sample_rate = audio_segments[0][0]
+        
+        # Create silence arrays for different gap types
+        chunk_silence_samples = int(final_sample_rate * chunk_gap)
+        chapter_silence_samples = int(final_sample_rate * chapter_gap)
+        chunk_silence = np.zeros(chunk_silence_samples, dtype=np.float32)
+        chapter_silence = np.zeros(chapter_silence_samples, dtype=np.float32)
+        
+        concatenated_audio = []
+        current_chapter_index = None
+        
+        for i, (sr, audio_data, title) in enumerate(audio_segments):
+            # Ensure audio is float32
+            if audio_data.dtype != np.float32:
+                audio_data = audio_data.astype(np.float32)
+            
+
+            
+            concatenated_audio.append(audio_data)
+            
+            # Add appropriate silence between segments (except after the last one)
+            if i < len(audio_segments) - 1:
+                # Get the chapter index for current and next chunk
+                current_chunk_chapter = text_chunks[i]['chapter_index']
+                next_chunk_chapter = text_chunks[i + 1]['chapter_index']
+                
+                # Use chapter gap if moving to a new chapter, otherwise use chunk gap
+                if current_chunk_chapter != next_chunk_chapter:
+                    concatenated_audio.append(chapter_silence)
+                else:
+                    concatenated_audio.append(chunk_silence)
+        
+        final_audio = np.concatenate(concatenated_audio)
+        
+        # Save the complete audiobook
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        book_title = metadata['title'].replace(' ', '_')
+        filename = f"audiobook_{book_title}_{timestamp}.wav"
+        filepath = os.path.join(audiobooks_folder, filename)
+        
+        # Normalize and save
+        if np.max(np.abs(final_audio)) > 0:
+            final_audio = final_audio / np.max(np.abs(final_audio)) * 0.95
+        
+        write(filepath, final_sample_rate, (final_audio * 32767).astype(np.int16))
+        
+        # Calculate total duration
+        total_duration = len(final_audio) / final_sample_rate / 60  # in minutes
+        
+        status_message = f"✅ Audiobook generated successfully!\n"
+        status_message += f"📖 Book: {metadata['title']}\n"
+        status_message += f"📊 Chapters processed: {len(audio_segments)}\n"
+        status_message += f"⏱️ Total duration: {total_duration:.1f} minutes\n"
+        status_message += f"🔇 Chunk gap: {chunk_gap}s | Chapter gap: {chapter_gap}s\n"
+        status_message += f"💾 Saved as: {filename}"
+        
+        return (final_sample_rate, final_audio), status_message
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return None, f"❌ Error converting eBook: {str(e)}"
+
+def get_ebook_info_display(analysis_result):
+    """Format eBook analysis result for display."""
+    if not analysis_result['success']:
+        return f"❌ Error: {analysis_result['error']}"
+    
+    metadata = analysis_result['metadata']
+    chapters = analysis_result['chapters']
+    
+    info_text = f"📖 **{metadata['title']}**\n\n"
+    info_text += f"📄 Format: {metadata['format'].upper()}\n"
+    info_text += f"📊 File size: {metadata['file_size'] / 1024 / 1024:.1f} MB\n"
+    info_text += f"📚 Total chapters: {metadata['total_chapters']}\n"
+    info_text += f"📝 Total words: {metadata['total_words']:,}\n"
+    info_text += f"⏱️ Estimated duration: {analysis_result['total_estimated_duration']:.1f} minutes\n\n"
+    
+    info_text += "**📋 Chapters:**\n"
+    for i, chapter in enumerate(chapters[:10]):  # Show first 10 chapters
+        info_text += f"{i+1}. {chapter['title']} ({chapter['word_count']} words, ~{chapter['estimated_duration']:.1f} min)\n"
+    
+    if len(chapters) > 10:
+        info_text += f"... and {len(chapters) - 10} more chapters\n"
+    
+    return info_text
+
 # ===== MAIN GENERATION FUNCTION =====
 def generate_unified_tts(
     # Common parameters
@@ -2390,6 +2643,10 @@ def create_gradio_interface():
                 <p style="margin: 0; opacity: 0.8; font-size: 0.8em;">30+ high-quality Kokoro voices</p>
             </div>
             <div class="feature-card" style="flex: 1;">
+                <h3 style="margin: 0 0 5px 0; padding: 0; font-size: 0.9em;">📚 eBook Conversion</h3>
+                <p style="margin: 0; opacity: 0.8; font-size: 0.8em;">Convert books to audiobooks</p>
+            </div>
+            <div class="feature-card" style="flex: 1;">
                 <h3 style="margin: 0 0 5px 0; padding: 0; font-size: 0.9em;">🎵 Audio Effects</h3>
                 <p style="margin: 0; opacity: 0.8; font-size: 0.8em;">Professional audio enhancement</p>
             </div>
@@ -2773,6 +3030,149 @@ def create_gradio_interface():
                         fish_max_tokens = gr.Slider(visible=False, value=1024)
                         fish_seed = gr.Number(visible=False, value=None)
         
+        # eBook to Audiobook Section
+        if EBOOK_CONVERTER_AVAILABLE:
+            with gr.Accordion("📚 eBook to Audiobook Converter", open=True, elem_classes=["fade-in"]):
+                gr.Markdown("""
+                <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)); 
+                            padding: 15px; border-radius: 12px; margin-bottom: 15px;'>
+                    <h3 style='margin: 0 0 8px 0; padding: 0; font-size: 1.1em;'>📖 Convert eBooks to Audiobooks</h3>
+                    <p style='margin: 0; opacity: 0.8; font-size: 0.9em;'>
+                        Upload your eBook (.epub, .pdf, .txt, .html) and convert it to an audiobook using any TTS engine.
+                        .html files work best for automatic chapter detection.
+                    </p>
+                </div>
+                """)
+                
+                with gr.Row():
+                    with gr.Column(scale=2):
+                        # File upload
+                        ebook_file = gr.File(
+                            label="📁 Upload eBook File",
+                            file_types=[".epub", ".pdf", ".txt", ".html", ".htm", ".rtf", ".fb2", ".odt"],
+                            elem_classes=["fade-in"]
+                        )
+                        
+                        # Analysis button and results
+                        with gr.Row():
+                            analyze_btn = gr.Button(
+                                "🔍 Analyze eBook",
+                                variant="secondary",
+                                elem_classes=["fade-in"]
+                            )
+                            convert_ebook_btn = gr.Button(
+                                "🎧 Convert to Audiobook",
+                                variant="primary",
+                                elem_classes=["fade-in"]
+                            )
+                            clear_ebook_btn = gr.Button(
+                                "🗑️ Clear",
+                                variant="secondary",
+                                elem_classes=["fade-in"]
+                            )
+                        
+                        # eBook information display
+                        ebook_info = gr.Markdown(
+                            value="Upload an eBook file and click 'Analyze eBook' to see details.",
+                            elem_classes=["fade-in"]
+                        )
+                        
+                        # Chapter selection
+                        chapter_selection = gr.CheckboxGroup(
+                            label="📋 Select Chapters to Convert (leave empty for all)",
+                            choices=[],
+                            value=[],
+                            visible=False,
+                            elem_classes=["fade-in"]
+                        )
+                    
+                    with gr.Column(scale=1):
+                        # Conversion settings
+                        gr.Markdown("**⚙️ Conversion Settings**")
+                        
+                        ebook_tts_engine = gr.Radio(
+                            choices=[
+                                ("🎤 ChatterboxTTS", "ChatterboxTTS"),
+                                ("🗣️ Kokoro TTS", "Kokoro TTS"),
+                                ("🐟 Fish Speech", "Fish Speech")
+                            ],
+                            value="ChatterboxTTS" if CHATTERBOX_AVAILABLE else "Kokoro TTS" if KOKORO_AVAILABLE else "Fish Speech",
+                            label="🎯 TTS Engine for Audiobook",
+                            elem_classes=["fade-in"]
+                        )
+                        
+                        ebook_chunk_length = gr.Slider(
+                            300, 800, step=50,
+                            label="📄 Text Chunk Length",
+                            value=500,
+                            info="Characters per TTS chunk",
+                            elem_classes=["fade-in"]
+                        )
+                        
+                        # Chunk timing controls for eBook conversion
+                        with gr.Accordion("⏱️ Chunk Timing Controls", open=True, elem_classes=["fade-in"]):
+                            gr.Markdown("""
+                            <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)); 
+                                        padding: 10px; border-radius: 8px; margin-bottom: 10px;'>
+                                <p style='margin: 0; opacity: 0.8; font-size: 0.85em;'>
+                                    🔇 Control the silence duration between chunks and chapters in your audiobook
+                                </p>
+                            </div>
+                            """)
+                            
+                            ebook_chunk_gap = gr.Slider(
+                                0.0, 3.0, step=0.1,
+                                label="🔇 Gap Between Chunks (seconds)",
+                                value=1.0,
+                                info="Silence duration between text chunks within the same chapter",
+                                elem_classes=["fade-in"]
+                            )
+                            
+                            ebook_chapter_gap = gr.Slider(
+                                0.0, 5.0, step=0.1,
+                                label="📖 Gap Between Chapters (seconds)",
+                                value=2.0,
+                                info="Silence duration when transitioning between chapters",
+                                elem_classes=["fade-in"]
+                            )
+                        
+                        # Audiobook output
+                        audiobook_output = gr.Audio(
+                            label="🎧 Generated Audiobook",
+                            show_download_button=True,
+                            elem_classes=["fade-in", "glow"]
+                        )
+                        
+                        # Conversion status
+                        ebook_status = gr.Textbox(
+                            label="📊 Conversion Status",
+                            lines=4,
+                            interactive=False,
+                            elem_classes=["fade-in"]
+                        )
+                
+                # Supported formats info
+                supported_formats = get_supported_formats() if EBOOK_CONVERTER_AVAILABLE else {}
+                gr.Markdown(f"""
+                <div style='margin-top: 15px; padding: 12px; background: rgba(102, 126, 234, 0.05); border-radius: 8px; border-left: 3px solid #667eea;'>
+                    <p style='margin: 0; font-size: 0.85em; opacity: 0.8;'>
+                        <strong>📋 Supported Formats:</strong> {', '.join(supported_formats.keys()) if supported_formats else 'N/A'}<br/>
+                        <strong>💡 Best Results:</strong> .html files work best for automatic chapter detection.<br/>
+                        <strong>⚡ Performance:</strong> Large books may take several minutes to convert depending on length and TTS engine.
+                    </p>
+                </div>
+                """)
+        else:
+            # Placeholder when eBook converter is not available
+            with gr.Accordion("📚 eBook to Audiobook Converter", open=False, elem_classes=["fade-in"]):
+                gr.Markdown("""
+                <div style='text-align: center; padding: 40px; opacity: 0.5;'>
+                    <h3>📚 eBook to Audiobook Converter</h3>
+                    <p>⚠️ Not available - please install required dependencies:</p>
+                    <code>pip install ebooklib PyPDF2 beautifulsoup4 chardet</code>
+                </div>
+                """)
+        
         # Audio Effects in a separate expandable section
         with gr.Accordion("🎵 Audio Effects Studio", open=False, elem_classes=["fade-in"]):
             gr.Markdown("""
@@ -2847,7 +3247,11 @@ def create_gradio_interface():
             else:
                 chatterbox_status_text = "❌ Failed to load"
                 selected_engine = gr.update()  # No change to current selection
-            return chatterbox_status_text, selected_engine
+            
+            if EBOOK_CONVERTER_AVAILABLE:
+                return chatterbox_status_text, selected_engine, selected_engine
+            else:
+                return chatterbox_status_text, selected_engine
         
         def handle_unload_chatterbox():
             message = unload_chatterbox()
@@ -2865,7 +3269,11 @@ def create_gradio_interface():
             else:
                 kokoro_status_text = "❌ Failed to load"
                 selected_engine = gr.update()  # No change to current selection
-            return kokoro_status_text, selected_engine
+            
+            if EBOOK_CONVERTER_AVAILABLE:
+                return kokoro_status_text, selected_engine, selected_engine
+            else:
+                return kokoro_status_text, selected_engine
         
         def handle_unload_kokoro():
             message = unload_kokoro()
@@ -2882,7 +3290,11 @@ def create_gradio_interface():
             else:
                 fish_status_text = "❌ Failed to load"
                 selected_engine = gr.update()  # No change to current selection
-            return fish_status_text, selected_engine
+            
+            if EBOOK_CONVERTER_AVAILABLE:
+                return fish_status_text, selected_engine, selected_engine
+            else:
+                return fish_status_text, selected_engine
         
         def handle_unload_fish():
             message = unload_fish_speech()
@@ -2894,7 +3306,7 @@ def create_gradio_interface():
         if CHATTERBOX_AVAILABLE:
             load_chatterbox_btn.click(
                 fn=handle_load_chatterbox,
-                outputs=[chatterbox_status, tts_engine]
+                outputs=[chatterbox_status, tts_engine, ebook_tts_engine] if EBOOK_CONVERTER_AVAILABLE else [chatterbox_status, tts_engine]
             )
             unload_chatterbox_btn.click(
                 fn=handle_unload_chatterbox,
@@ -2905,7 +3317,7 @@ def create_gradio_interface():
         if KOKORO_AVAILABLE:
             load_kokoro_btn.click(
                 fn=handle_load_kokoro,
-                outputs=[kokoro_status, tts_engine]
+                outputs=[kokoro_status, tts_engine, ebook_tts_engine] if EBOOK_CONVERTER_AVAILABLE else [kokoro_status, tts_engine]
             )
             unload_kokoro_btn.click(
                 fn=handle_unload_kokoro,
@@ -2916,7 +3328,7 @@ def create_gradio_interface():
         if FISH_SPEECH_AVAILABLE:
             load_fish_btn.click(
                 fn=handle_load_fish,
-                outputs=[fish_status, tts_engine]
+                outputs=[fish_status, tts_engine, ebook_tts_engine] if EBOOK_CONVERTER_AVAILABLE else [fish_status, tts_engine]
             )
             unload_fish_btn.click(
                 fn=handle_unload_fish,
@@ -2939,6 +3351,104 @@ def create_gradio_interface():
             ],
             outputs=[audio_output, status_output]
         )
+        
+        # eBook conversion event handlers
+        if EBOOK_CONVERTER_AVAILABLE:
+            def handle_ebook_analysis(file_path):
+                """Handle eBook file analysis."""
+                if not file_path:
+                    return "Please upload an eBook file first.", gr.update(choices=[], visible=False)
+                
+                analysis_result = analyze_ebook_file(file_path)
+                info_display = get_ebook_info_display(analysis_result)
+                
+                if analysis_result['success']:
+                    # Create chapter choices for selection
+                    chapter_choices = [
+                        (f"{i+1}. {ch['title']}", i) 
+                        for i, ch in enumerate(analysis_result['chapters'])
+                    ]
+                    return info_display, gr.update(choices=chapter_choices, visible=True)
+                else:
+                    return info_display, gr.update(choices=[], visible=False)
+            
+            def handle_ebook_conversion(
+                file_path, tts_engine_choice, selected_chapters, chunk_length,
+                # All the TTS parameters need to be passed through
+                cb_ref_audio, cb_exag, cb_temp, cb_cfg, cb_seed,
+                kok_voice, kok_speed,
+                fish_ref_audio, fish_ref_text, fish_temp, fish_top_p, fish_rep_pen, fish_max_tok, fish_seed_val,
+                gain, eq_en, eq_b, eq_m, eq_t,
+                rev_en, rev_room, rev_damp, rev_wet,
+                echo_en, echo_del, echo_dec,
+                pitch_en, pitch_semi,
+                # Advanced eBook settings
+                chunk_gap, chapter_gap
+            ):
+                """Handle eBook to audiobook conversion."""
+                if not file_path:
+                    return None, "Please upload an eBook file first."
+                
+                return convert_ebook_to_audiobook(
+                    file_path, tts_engine_choice, selected_chapters, chunk_length,
+                    cb_ref_audio, cb_exag, cb_temp, cb_cfg, cb_seed,
+                    kok_voice, kok_speed,
+                    fish_ref_audio, fish_ref_text, fish_temp, fish_top_p, fish_rep_pen, fish_max_tok, fish_seed_val,
+                    gain, eq_en, eq_b, eq_m, eq_t,
+                    rev_en, rev_room, rev_damp, rev_wet,
+                    echo_en, echo_del, echo_dec,
+                    pitch_en, pitch_semi,
+                    # Advanced eBook settings
+                    chunk_gap, chapter_gap
+                )
+            
+            def handle_clear_ebook():
+                """Clear all eBook-related inputs and outputs."""
+                return (
+                    None,  # ebook_file
+                    "Upload an eBook file and click 'Analyze eBook' to see details.",  # ebook_info
+                    gr.update(choices=[], value=[], visible=False),  # chapter_selection
+                    None,  # audiobook_output
+                    ""     # ebook_status
+                )
+            
+            # Connect eBook analysis
+            analyze_btn.click(
+                fn=handle_ebook_analysis,
+                inputs=[ebook_file],
+                outputs=[ebook_info, chapter_selection]
+            )
+            
+            # Connect eBook conversion
+            convert_ebook_btn.click(
+                fn=handle_ebook_conversion,
+                inputs=[
+                    ebook_file, ebook_tts_engine, chapter_selection, ebook_chunk_length,
+                    # ChatterboxTTS parameters
+                    chatterbox_ref_audio, chatterbox_exaggeration, chatterbox_temperature,
+                    chatterbox_cfg_weight, chatterbox_seed,
+                    # Kokoro parameters
+                    kokoro_voice, kokoro_speed,
+                    # Fish Speech parameters
+                    fish_ref_audio, fish_ref_text, fish_temperature, fish_top_p, 
+                    fish_repetition_penalty, fish_max_tokens, fish_seed,
+                    # Effects parameters
+                    gain_db, enable_eq, eq_bass, eq_mid, eq_treble,
+                    enable_reverb, reverb_room, reverb_damping, reverb_wet,
+                    enable_echo, echo_delay, echo_decay,
+                    enable_pitch, pitch_semitones,
+                    # Advanced eBook settings
+                    ebook_chunk_gap, ebook_chapter_gap
+                ],
+                outputs=[audiobook_output, ebook_status]
+            )
+            
+            # Connect eBook clear button
+            clear_ebook_btn.click(
+                fn=handle_clear_ebook,
+                inputs=[],
+                outputs=[ebook_file, ebook_info, chapter_selection, audiobook_output, ebook_status]
+            )
         
         # Custom voice upload event handlers (only if Kokoro is available)
         if KOKORO_AVAILABLE:
