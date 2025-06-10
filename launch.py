@@ -1522,17 +1522,28 @@ def convert_ebook_to_audiobook(
         
         write(filepath, final_sample_rate, (final_audio * 32767).astype(np.int16))
         
-        # Calculate total duration
+        # Calculate total duration and file size
         total_duration = len(final_audio) / final_sample_rate / 60  # in minutes
+        file_size_mb = os.path.getsize(filepath) / (1024 * 1024)  # in MB
         
         status_message = f"✅ Audiobook generated successfully!\n"
         status_message += f"📖 Book: {metadata['title']}\n"
         status_message += f"📊 Chapters processed: {len(audio_segments)}\n"
         status_message += f"⏱️ Total duration: {total_duration:.1f} minutes\n"
+        status_message += f"📁 File size: {file_size_mb:.1f} MB\n"
         status_message += f"🔇 Chunk gap: {chunk_gap}s | Chapter gap: {chapter_gap}s\n"
-        status_message += f"💾 Saved as: {filename}"
+        status_message += f"💾 Saved as: {filename}\n"
+        status_message += f"📂 Location: {os.path.abspath(filepath)}\n\n"
         
-        return (final_sample_rate, final_audio), status_message
+        # For large files (>50MB or >30 minutes), don't return the audio data to avoid browser issues
+        if file_size_mb > 50 or total_duration > 30:
+            status_message += "⚠️ Large audiobook detected!\n"
+            status_message += "🎧 File too large for browser playback - please use the download link or check the audiobooks folder.\n"
+            status_message += "💡 You can play the file with any audio player (VLC, Windows Media Player, etc.)"
+            return filepath, status_message  # Return file path instead of audio data
+        else:
+            status_message += "🎧 Audio preview available below (for smaller files)"
+            return (final_sample_rate, final_audio), status_message
         
     except Exception as e:
         import traceback
@@ -3143,6 +3154,13 @@ def create_gradio_interface():
                             elem_classes=["fade-in", "glow"]
                         )
                         
+                        # Download link for large files
+                        audiobook_download = gr.File(
+                            label="📥 Download Large Audiobook",
+                            visible=False,
+                            elem_classes=["fade-in"]
+                        )
+                        
                         # Conversion status
                         ebook_status = gr.Textbox(
                             label="📊 Conversion Status",
@@ -3158,7 +3176,9 @@ def create_gradio_interface():
                     <p style='margin: 0; font-size: 0.85em; opacity: 0.8;'>
                         <strong>📋 Supported Formats:</strong> {', '.join(supported_formats.keys()) if supported_formats else 'N/A'}<br/>
                         <strong>💡 Best Results:</strong> .html files work best for automatic chapter detection.<br/>
-                        <strong>⚡ Performance:</strong> Large books may take several minutes to convert depending on length and TTS engine.
+                        <strong>⚡ Performance:</strong> Large books may take several minutes to convert depending on length and TTS engine.<br/>
+                        <strong>📁 Large Files:</strong> Audiobooks >50MB or >30min will be saved to the audiobooks folder with a download link (browser can't play very large files).<br/>
+                        <strong>🎧 Playback:</strong> Use VLC, Windows Media Player, or any audio player for large audiobooks.
                     </p>
                 </div>
                 """)
@@ -3387,9 +3407,9 @@ def create_gradio_interface():
             ):
                 """Handle eBook to audiobook conversion."""
                 if not file_path:
-                    return None, "Please upload an eBook file first."
+                    return None, None, "Please upload an eBook file first."
                 
-                return convert_ebook_to_audiobook(
+                result = convert_ebook_to_audiobook(
                     file_path, tts_engine_choice, selected_chapters, chunk_length,
                     cb_ref_audio, cb_exag, cb_temp, cb_cfg, cb_seed,
                     kok_voice, kok_speed,
@@ -3401,6 +3421,20 @@ def create_gradio_interface():
                     # Advanced eBook settings
                     chunk_gap, chapter_gap
                 )
+                
+                if result[0] is None:
+                    # Error case
+                    return None, gr.update(visible=False), result[1]
+                
+                audio_result, status_message = result
+                
+                # Check if result is a file path (large file) or audio data (small file)
+                if isinstance(audio_result, str):
+                    # Large file - return file path for download
+                    return None, gr.update(value=audio_result, visible=True), status_message
+                else:
+                    # Small file - return audio data for playback
+                    return audio_result, gr.update(visible=False), status_message
             
             def handle_clear_ebook():
                 """Clear all eBook-related inputs and outputs."""
@@ -3409,6 +3443,7 @@ def create_gradio_interface():
                     "Upload an eBook file and click 'Analyze eBook' to see details.",  # ebook_info
                     gr.update(choices=[], value=[], visible=False),  # chapter_selection
                     None,  # audiobook_output
+                    gr.update(visible=False),  # audiobook_download
                     ""     # ebook_status
                 )
             
@@ -3440,14 +3475,14 @@ def create_gradio_interface():
                     # Advanced eBook settings
                     ebook_chunk_gap, ebook_chapter_gap
                 ],
-                outputs=[audiobook_output, ebook_status]
+                outputs=[audiobook_output, audiobook_download, ebook_status]
             )
             
             # Connect eBook clear button
             clear_ebook_btn.click(
                 fn=handle_clear_ebook,
                 inputs=[],
-                outputs=[ebook_file, ebook_info, chapter_selection, audiobook_output, ebook_status]
+                outputs=[ebook_file, ebook_info, chapter_selection, audiobook_output, audiobook_download, ebook_status]
             )
         
         # Custom voice upload event handlers (only if Kokoro is available)
