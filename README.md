@@ -1,30 +1,36 @@
 ## ⚠️ Notice: Major App Update
 
-This update introduces improvements to performance, model handling, and the user interface. Please review the changes below:
+### 📅 June 10, 2025
+
+We’re excited to announce a major update to the app!
+
+### 🎧 New Feature: eBook to Audiobook
+Bring your favorite eBooks to life with our brand-new **custom voice audiobook** feature. Instantly convert any eBook into a personalized listening experience—perfect for learning, multitasking, or relaxing on the go.
+![Screenshot 2025-06-10 204108](https://github.com/user-attachments/assets/7aa08f03-4c23-4772-a1cd-6e9967fa8882)
+
+---
+### 📅 June 7, 2025
+
+This update brings key improvements to **performance**, **model management**, and the **user interface**. Here's what's new:
 
 ### 🔧 Model Management
-
-* Models are no longer automatically loaded into GPU memory on app launch.
-* You can now **manually load and unload models** as needed, giving you better control over memory usage.
+* Models are **no longer auto-loaded into GPU memory** at app launch.
+* You can now **manually load and unload models**, giving you more precise control over memory usage.
 
 ### 🎨 UI Enhancements
-
-* A refreshed user interface has been introduced.
-* The app is now **designed for dark mode**. It will still run in light mode, but some visual elements may not display as intended.
+* A **refreshed interface** is now live.
+* The app is now **optimized for dark mode**. It still works in light mode, but some visuals may not display as intended.
 
 ### 🐟 Fish Speech Fix
-
-* Fixed a bug where Fish Speech was not chunking text correctly, which could lead to processing issues.
+* Fixed a bug where **Fish Speech** did not chunk text correctly, which could cause processing issues.
 
 ### 📥 Model Download Behavior
-
-* **Chatterbox** and **Kokoro** models will **automatically download** the first time you click "Load" on each one.
-* **Fish Speech** models must be **downloaded manually** and are not included in the auto-download process.
+* **Chatterbox** and **Kokoro** models will **automatically download** the first time you click "Load."
+* **Fish Speech** models must still be **downloaded manually** and are **not included** in the auto-download process.
 
 ### 🗣️ New Feature: Custom Kokoro Voices
-
 * **Kokoro** now supports **custom `.pt` voice models**!
-* You can upload your own Kokoro-compatible `.pt` voice files using the **Custom Voice Upload** section in the Kokoro interface.
+* Use the **Custom Voice Upload** section in the Kokoro interface to upload your own compatible voice files.
 
 ---
 ![Screenshot 2025-06-07 204449](https://github.com/user-attachments/assets/d48b4dc0-fca1-47cb-9510-00dcd3d58518)
