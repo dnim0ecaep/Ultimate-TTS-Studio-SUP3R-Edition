@@ -67,10 +67,77 @@ try:
     import librosa
     import soundfile as sf
     import base64
+    from pydub import AudioSegment
     AUDIO_PROCESSING_AVAILABLE = True
 except ImportError:
     AUDIO_PROCESSING_AVAILABLE = False
     print("⚠️ Advanced audio processing libraries not available. Some features will be disabled.")
+
+# ===== HELPER FUNCTIONS =====
+def save_audio_with_format(audio_data, sample_rate, output_format="wav", output_folder=None, filename_base=None):
+    """
+    Save audio data in the specified format (WAV or MP3).
+    
+    Args:
+        audio_data: numpy array of audio samples
+        sample_rate: sample rate of the audio
+        output_format: "wav" or "mp3"
+        output_folder: folder to save the file (default: global output_folder)
+        filename_base: base filename without extension (default: auto-generated)
+    
+    Returns:
+        tuple: (filepath, filename) of the saved file
+    """
+    if output_folder is None:
+        output_folder = globals().get('output_folder', 'outputs')
+    
+    if filename_base is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename_base = f"tts_output_{timestamp}"
+    
+    # Ensure output format is lowercase
+    output_format = output_format.lower()
+    
+    # Ensure the folder exists
+    os.makedirs(output_folder, exist_ok=True)
+    
+    if output_format == "wav":
+        # Save directly as WAV using scipy
+        filename = f"{filename_base}.wav"
+        filepath = os.path.join(output_folder, filename)
+        write(filepath, sample_rate, (audio_data * 32767).astype(np.int16))
+        return filepath, filename
+    
+    elif output_format == "mp3":
+        # Convert to MP3 using pydub
+        try:
+            # First save as temporary WAV
+            temp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            write(temp_wav.name, sample_rate, (audio_data * 32767).astype(np.int16))
+            temp_wav.close()
+            
+            # Convert to MP3
+            audio_segment = AudioSegment.from_wav(temp_wav.name)
+            filename = f"{filename_base}.mp3"
+            filepath = os.path.join(output_folder, filename)
+            audio_segment.export(filepath, format="mp3", bitrate="192k")
+            
+            # Clean up temporary file
+            os.unlink(temp_wav.name)
+            
+            return filepath, filename
+            
+        except Exception as e:
+            print(f"Error converting to MP3: {e}")
+            # Fallback to WAV
+            print("Falling back to WAV format...")
+            filename = f"{filename_base}.wav"
+            filepath = os.path.join(output_folder, filename)
+            write(filepath, sample_rate, (audio_data * 32767).astype(np.int16))
+            return filepath, filename
+    
+    else:
+        raise ValueError(f"Unsupported audio format: {output_format}. Supported formats: wav, mp3")
 
 # ===== GLOBAL CONFIGURATION =====
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -646,7 +713,9 @@ def generate_chatterbox_tts(
     seed_num_input: int,
     cfgw_input: float,
     chunk_size_input: int,
-    effects_settings=None
+    effects_settings=None,
+    audio_format: str = "wav",
+    skip_file_saving: bool = False
 ):
     """Generate TTS audio using ChatterboxTTS."""
     if not CHATTERBOX_AVAILABLE:
@@ -695,7 +764,22 @@ def generate_chatterbox_tts(
         if effects_settings:
             final_audio = apply_audio_effects(final_audio, CHATTERBOX_MODEL.sr, effects_settings)
         
-        return (CHATTERBOX_MODEL.sr, final_audio), "✅ Generated with ChatterboxTTS"
+        # Save audio file in specified format (skip if requested, e.g., for audiobook chunks)
+        if skip_file_saving:
+            status_message = "✅ Generated with ChatterboxTTS"
+        else:
+            try:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename_base = f"chatterbox_output_{timestamp}"
+                filepath, filename = save_audio_with_format(
+                    final_audio, CHATTERBOX_MODEL.sr, audio_format, output_folder, filename_base
+                )
+                status_message = f"✅ Generated with ChatterboxTTS - Saved as: {filename}"
+            except Exception as e:
+                print(f"Warning: Could not save audio file: {e}")
+                status_message = "✅ Generated with ChatterboxTTS (file saving failed)"
+        
+        return (CHATTERBOX_MODEL.sr, final_audio), status_message
         
     except Exception as e:
         return None, f"❌ ChatterboxTTS error: {str(e)}"
@@ -900,7 +984,9 @@ def generate_fish_speech_tts(
     fish_repetition_penalty: float = 1.1,
     fish_max_tokens: int = 1024,
     fish_seed: int = None,
-    effects_settings=None
+    effects_settings=None,
+    audio_format: str = "wav",
+    skip_file_saving: bool = False
 ):
     """Generate TTS audio using Fish Speech - Proper implementation with chunking support."""
     if not FISH_SPEECH_AVAILABLE:
@@ -1008,7 +1094,22 @@ def generate_fish_speech_tts(
         if effects_settings:
             final_audio = apply_audio_effects(final_audio, sample_rate, effects_settings)
         
-        return (sample_rate, final_audio), f"✅ Generated with Fish Speech ({len(text_chunks)} chunks processed)"
+        # Save audio file in specified format (skip if requested, e.g., for audiobook chunks)
+        if skip_file_saving:
+            status_message = f"✅ Generated with Fish Speech ({len(text_chunks)} chunks processed)"
+        else:
+            try:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename_base = f"fish_speech_output_{timestamp}"
+                filepath, filename = save_audio_with_format(
+                    final_audio, sample_rate, audio_format, output_folder, filename_base
+                )
+                status_message = f"✅ Generated with Fish Speech ({len(text_chunks)} chunks processed) - Saved as: {filename}"
+            except Exception as e:
+                print(f"Warning: Could not save audio file: {e}")
+                status_message = f"✅ Generated with Fish Speech ({len(text_chunks)} chunks processed) (file saving failed)"
+        
+        return (sample_rate, final_audio), status_message
         
     except Exception as e:
         import traceback
@@ -1173,7 +1274,7 @@ def preload_kokoro_voices():
     
     print(f"All voices preloaded successfully. Total voices in cache: {len(loaded_voices)}")
 
-def generate_kokoro_tts(text, voice='af_heart', speed=1, effects_settings=None):
+def generate_kokoro_tts(text, voice='af_heart', speed=1, effects_settings=None, audio_format="wav", skip_file_saving=False):
     """Generate TTS audio using Kokoro TTS."""
     if not KOKORO_AVAILABLE:
         return None, "❌ Kokoro TTS not available - check installation"
@@ -1277,14 +1378,22 @@ def generate_kokoro_tts(text, voice='af_heart', speed=1, effects_settings=None):
         if effects_settings:
             final_audio = apply_audio_effects(final_audio, 24000, effects_settings)
         
-        # Save to file
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"kokoro_output_{timestamp}.wav"
-        filepath = os.path.join(output_folder, filename)
+        # Save audio file in specified format (skip if requested, e.g., for audiobook chunks)
+        if skip_file_saving:
+            status_message = f"✅ Generated with Kokoro TTS ({len(text_chunks)} chunks)"
+        else:
+            try:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename_base = f"kokoro_output_{timestamp}"
+                filepath, filename = save_audio_with_format(
+                    final_audio, 24000, audio_format, output_folder, filename_base
+                )
+                status_message = f"✅ Generated with Kokoro TTS ({len(text_chunks)} chunks) - Saved as: {filename}"
+            except Exception as e:
+                print(f"Warning: Could not save audio file: {e}")
+                status_message = f"✅ Generated with Kokoro TTS ({len(text_chunks)} chunks) (file saving failed)"
         
-        write(filepath, 24000, (final_audio * 32767).astype(np.int16))
-        
-        return (24000, final_audio), f"✅ Generated with Kokoro TTS ({len(text_chunks)} chunks): {filepath}"
+        return (24000, final_audio), status_message
         
     except Exception as e:
         return None, f"❌ Kokoro error: {str(e)}"
@@ -1362,6 +1471,8 @@ def convert_ebook_to_audiobook(
     tts_engine: str,
     selected_chapters: list,
     max_chunk_length: int = 500,
+    # Audio format parameter
+    audio_format: str = "wav",
     # ChatterboxTTS parameters
     chatterbox_ref_audio: str = None,
     chatterbox_exaggeration: float = 0.5,
@@ -1451,16 +1562,16 @@ def convert_ebook_to_audiobook(
                 audio_result, status = generate_chatterbox_tts(
                     chunk['content'], chatterbox_ref_audio, chatterbox_exaggeration,
                     chatterbox_temperature, chatterbox_seed, chatterbox_cfg_weight,
-                    max_chunk_length, effects_settings
+                    max_chunk_length, effects_settings, "wav", skip_file_saving=True  # Skip saving individual chunks
                 )
             elif tts_engine == "Kokoro TTS":
                 audio_result, status = generate_kokoro_tts(
-                    chunk['content'], kokoro_voice, kokoro_speed, effects_settings
+                    chunk['content'], kokoro_voice, kokoro_speed, effects_settings, "wav", skip_file_saving=True  # Skip saving individual chunks
                 )
             elif tts_engine == "Fish Speech":
                 audio_result, status = generate_fish_speech_tts(
                     chunk['content'], fish_ref_audio, fish_ref_text, fish_temperature, fish_top_p,
-                    fish_repetition_penalty, fish_max_tokens, fish_seed, effects_settings
+                    fish_repetition_penalty, fish_max_tokens, fish_seed, effects_settings, "wav", skip_file_saving=True  # Skip saving individual chunks
                 )
             else:
                 return None, f"❌ Invalid TTS engine: {tts_engine}"
@@ -1513,14 +1624,23 @@ def convert_ebook_to_audiobook(
         # Save the complete audiobook
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         book_title = metadata['title'].replace(' ', '_')
-        filename = f"audiobook_{book_title}_{timestamp}.wav"
-        filepath = os.path.join(audiobooks_folder, filename)
+        filename_base = f"audiobook_{book_title}_{timestamp}"
         
         # Normalize and save
         if np.max(np.abs(final_audio)) > 0:
             final_audio = final_audio / np.max(np.abs(final_audio)) * 0.95
         
-        write(filepath, final_sample_rate, (final_audio * 32767).astype(np.int16))
+        # Save in specified format
+        try:
+            filepath, filename = save_audio_with_format(
+                final_audio, final_sample_rate, audio_format, audiobooks_folder, filename_base
+            )
+        except Exception as e:
+            print(f"Warning: Could not save audiobook in {audio_format} format: {e}")
+            # Fallback to WAV
+            filename = f"{filename_base}.wav"
+            filepath = os.path.join(audiobooks_folder, filename)
+            write(filepath, final_sample_rate, (final_audio * 32767).astype(np.int16))
         
         # Calculate total duration and file size
         total_duration = len(final_audio) / final_sample_rate / 60  # in minutes
@@ -1579,6 +1699,8 @@ def generate_unified_tts(
     # Common parameters
     text_input: str,
     tts_engine: str,
+    # Audio format parameter
+    audio_format: str = "wav",
     # ChatterboxTTS parameters
     chatterbox_ref_audio: str = None,
     chatterbox_exaggeration: float = 0.5,
@@ -1640,16 +1762,16 @@ def generate_unified_tts(
         return generate_chatterbox_tts(
             text_input, chatterbox_ref_audio, chatterbox_exaggeration,
             chatterbox_temperature, chatterbox_seed, chatterbox_cfg_weight,
-            chatterbox_chunk_size, effects_settings
+            chatterbox_chunk_size, effects_settings, audio_format
         )
     elif tts_engine == "Kokoro TTS":
         return generate_kokoro_tts(
-            text_input, kokoro_voice, kokoro_speed, effects_settings
+            text_input, kokoro_voice, kokoro_speed, effects_settings, audio_format
         )
     elif tts_engine == "Fish Speech":
         return generate_fish_speech_tts(
             text_input, fish_ref_audio, fish_ref_text, fish_temperature, fish_top_p,
-            fish_repetition_penalty, fish_max_tokens, fish_seed, effects_settings
+            fish_repetition_penalty, fish_max_tokens, fish_seed, effects_settings, audio_format
         )
     else:
         return None, "❌ Invalid TTS engine selected"
@@ -2778,6 +2900,18 @@ def create_gradio_interface():
                     info="Choose your preferred text-to-speech engine (auto-selects when you load a model)",
                     elem_classes=["fade-in"]
                 )
+                
+                # Audio Format Selection
+                audio_format = gr.Radio(
+                    choices=[
+                        ("🎵 WAV - Uncompressed (High Quality)", "wav"),
+                        ("🎶 MP3 - Compressed (Smaller Size)", "mp3")
+                    ],
+                    value="wav",
+                    label="🎵 Audio Output Format",
+                    info="Choose output format: WAV for best quality, MP3 for smaller file size",
+                    elem_classes=["fade-in"]
+                )
             
             with gr.Column(scale=2):
                 # Audio output section with glow effect
@@ -3112,6 +3246,18 @@ def create_gradio_interface():
                             elem_classes=["fade-in"]
                         )
                         
+                        # Audio Format for eBook conversion
+                        ebook_audio_format = gr.Radio(
+                            choices=[
+                                ("🎵 WAV - Uncompressed (High Quality)", "wav"),
+                                ("🎶 MP3 - Compressed (Smaller Size)", "mp3")
+                            ],
+                            value="wav",
+                            label="🎵 Audiobook Format",
+                            info="Choose format: WAV for best quality, MP3 for smaller file size",
+                            elem_classes=["fade-in"]
+                        )
+                        
                         ebook_chunk_length = gr.Slider(
                             300, 800, step=50,
                             label="📄 Text Chunk Length",
@@ -3359,7 +3505,7 @@ def create_gradio_interface():
         generate_btn.click(
             fn=generate_unified_tts,
             inputs=[
-                text, tts_engine,
+                text, tts_engine, audio_format,
                 chatterbox_ref_audio, chatterbox_exaggeration, chatterbox_temperature,
                 chatterbox_cfg_weight, chatterbox_chunk_size, chatterbox_seed,
                 kokoro_voice, kokoro_speed,
@@ -3393,7 +3539,7 @@ def create_gradio_interface():
                     return info_display, gr.update(choices=[], visible=False)
             
             def handle_ebook_conversion(
-                file_path, tts_engine_choice, selected_chapters, chunk_length,
+                file_path, tts_engine_choice, selected_chapters, chunk_length, ebook_format,
                 # All the TTS parameters need to be passed through
                 cb_ref_audio, cb_exag, cb_temp, cb_cfg, cb_seed,
                 kok_voice, kok_speed,
@@ -3410,7 +3556,7 @@ def create_gradio_interface():
                     return None, None, "Please upload an eBook file first."
                 
                 result = convert_ebook_to_audiobook(
-                    file_path, tts_engine_choice, selected_chapters, chunk_length,
+                    file_path, tts_engine_choice, selected_chapters, chunk_length, ebook_format,
                     cb_ref_audio, cb_exag, cb_temp, cb_cfg, cb_seed,
                     kok_voice, kok_speed,
                     fish_ref_audio, fish_ref_text, fish_temp, fish_top_p, fish_rep_pen, fish_max_tok, fish_seed_val,
@@ -3458,7 +3604,7 @@ def create_gradio_interface():
             convert_ebook_btn.click(
                 fn=handle_ebook_conversion,
                 inputs=[
-                    ebook_file, ebook_tts_engine, chapter_selection, ebook_chunk_length,
+                    ebook_file, ebook_tts_engine, chapter_selection, ebook_chunk_length, ebook_audio_format,
                     # ChatterboxTTS parameters
                     chatterbox_ref_audio, chatterbox_exaggeration, chatterbox_temperature,
                     chatterbox_cfg_weight, chatterbox_seed,
