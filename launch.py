@@ -69,6 +69,13 @@ try:
     import base64
     from pydub import AudioSegment
     AUDIO_PROCESSING_AVAILABLE = True
+    
+    # Configure FFmpeg from virtual environment
+    try:
+        import ffmpeg_env_config
+    except ImportError:
+        print("⚠️ FFmpeg env config not available")
+        
 except ImportError:
     AUDIO_PROCESSING_AVAILABLE = False
     print("⚠️ Advanced audio processing libraries not available. Some features will be disabled.")
