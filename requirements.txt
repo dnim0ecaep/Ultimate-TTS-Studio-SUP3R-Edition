@@ -9,7 +9,7 @@ einops>=0.7.0
 einx[torch]==0.2.2
 espeakng-loader
 faster_whisper
-ffmpeg
+imageio-ffmpeg
 funasr==1.1.5
 gradio>5.0.0
 grpcio>=1.58.0
