@@ -98,9 +98,9 @@ if not errorlevel 1 (
     set /p update_deps="Enter your choice (y/n): "
     
     if /i "%update_deps%"=="y" (
-        if exist "python-env\Scripts\activate.bat" (
+        if exist "env\Scripts\activate.bat" (
             echo [INFO] Updating dependencies...
-            call python-env\Scripts\activate.bat
+            call env\Scripts\activate.bat
             pip install -r requirements.txt
             echo [SUCCESS] Dependencies updated!
         ) else (
