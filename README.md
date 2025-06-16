@@ -1,5 +1,11 @@
 ## ⚠️ Notice: Major App Update
 
+### 📅 June 16, 2025
+ New Feature: Conversation Mode for Chatterbox & Fish Speech
+
+You can now enjoy **real-time, back-and-forth conversation mode** in both **Chatterbox** and **Fish Speech**. This feature allows for smoother interactions and a more natural dialogue experience—perfect for dynamic voice-based applications.
+![Screenshot 2025-06-14 212405](https://github.com/user-attachments/assets/8950be72-e882-47f1-97d8-87bee880d66e)
+
 ### 📅 June 10, 2025
 
 We’re excited to announce a major update to the app!
@@ -8,7 +14,6 @@ We’re excited to announce a major update to the app!
 Bring your favorite eBooks to life with our brand-new **custom voice audiobook** feature. Instantly convert any eBook into a personalized listening experience—perfect for learning, multitasking, or relaxing on the go.
 ![Screenshot 2025-06-10 204108](https://github.com/user-attachments/assets/7aa08f03-4c23-4772-a1cd-6e9967fa8882)
 
----
 ### 📅 June 7, 2025
 
 This update brings key improvements to **performance**, **model management**, and the **user interface**. Here's what's new:
