@@ -15,6 +15,7 @@ from scipy.io import wavfile
 from scipy import signal
 import tempfile
 import shutil
+import glob
 from tqdm import tqdm
 from scipy.io.wavfile import write
 
@@ -79,6 +80,381 @@ try:
 except ImportError:
     AUDIO_PROCESSING_AVAILABLE = False
     print("⚠️ Advanced audio processing libraries not available. Some features will be disabled.")
+
+# ===== CONVERSATION MODE FUNCTIONS =====
+def parse_conversation_script(script_text):
+    """Parse conversation script in Speaker: Text format."""
+    try:
+        lines = script_text.strip().split('\n')
+        conversation = []
+        current_speaker = None
+        current_text = ""
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Check if line contains speaker designation (Speaker: Text format)
+            if ':' in line and not line.startswith(' '):
+                # Save previous speaker's text if exists
+                if current_speaker and current_text:
+                    conversation.append({
+                        'speaker': current_speaker,
+                        'text': current_text.strip()
+                    })
+                
+                # Parse new speaker line
+                parts = line.split(':', 1)
+                if len(parts) == 2:
+                    current_speaker = parts[0].strip()
+                    current_text = parts[1].strip()
+                else:
+                    # Invalid format, treat as continuation
+                    current_text += " " + line
+            else:
+                # Continuation of previous speaker's text
+                current_text += " " + line
+        
+        # Add the last speaker's text
+        if current_speaker and current_text:
+            conversation.append({
+                'speaker': current_speaker,
+                'text': current_text.strip()
+            })
+        
+        return conversation, None
+        
+    except Exception as e:
+        return [], f"Error parsing conversation: {str(e)}"
+
+def get_speaker_names_from_script(script_text):
+    """Extract unique speaker names from conversation script."""
+    conversation, error = parse_conversation_script(script_text)
+    if error:
+        return []
+    
+    speakers = list(set([item['speaker'] for item in conversation]))
+    return sorted(speakers)
+
+def create_default_speaker_settings(speakers):
+    """Create default settings for a list of speakers."""
+    default_settings = {}
+    
+    for speaker in speakers:
+        default_settings[speaker] = {
+            # Common settings
+            'ref_audio': '',  # Path to reference audio file
+            'tts_engine': 'chatterbox',  # Default engine: 'chatterbox', 'kokoro', or 'Fish Speech'
+            
+            # ChatterboxTTS settings
+            'exaggeration': 0.5,
+            'temperature': 0.8,
+            'cfg_weight': 0.5,
+            
+            # Kokoro TTS settings
+            'kokoro_voice': 'af_heart',
+            'kokoro_speed': 1.0,
+            
+            # Fish Speech settings
+            'fish_ref_text': '',
+            'fish_temperature': 0.8,
+            'fish_top_p': 0.8,
+            'fish_repetition_penalty': 1.1,
+            'fish_max_tokens': 1024,
+            'fish_seed': None
+        }
+    
+    return default_settings
+
+def generate_conversation_audio_simple(
+    conversation_script,
+    voice_samples,  # List of voice sample file paths
+    selected_engine="chatterbox",
+    conversation_pause_duration=0.8,
+    speaker_transition_pause=0.3,
+    effects_settings=None,
+    audio_format="wav"
+):
+    """Generate a complete conversation with multiple voices - Simplified version."""
+    try:
+        print("🎭 Starting conversation generation...")
+        
+        # Parse the conversation script
+        conversation, parse_error = parse_conversation_script(conversation_script)
+        if parse_error:
+            return None, f"❌ Script parsing error: {parse_error}"
+        
+        if not conversation:
+            return None, "❌ No valid conversation found in script"
+        
+        print(f"📝 Parsed {len(conversation)} conversation lines")
+        
+        # Get unique speakers and map them to voice samples
+        speakers = get_speaker_names_from_script(conversation_script)
+        print(f"🎤 Found speakers: {speakers}")
+        
+        # Map speakers to voice samples
+        speaker_voice_map = {}
+        for i, speaker in enumerate(speakers):
+            if i < len(voice_samples) and voice_samples[i] is not None:
+                speaker_voice_map[speaker] = voice_samples[i]
+                print(f"🎤 {speaker} -> {voice_samples[i]}")
+            else:
+                speaker_voice_map[speaker] = None
+                print(f"🎤 {speaker} -> No voice sample")
+        
+        conversation_audio_chunks = []
+        conversation_info = []
+        sample_rate = None
+        
+        # Generate audio for each conversation line
+        for i, line in enumerate(conversation):
+            speaker = line['speaker']
+            text = line['text']
+            
+            print(f"🗣️ Generating line {i+1}/{len(conversation)}: {speaker} - \"{text[:30]}...\"")
+            
+            ref_audio = speaker_voice_map.get(speaker)
+            
+            # Generate audio based on selected engine
+            try:
+                if selected_engine == 'chatterbox' or selected_engine == 'ChatterboxTTS':
+                    result = generate_chatterbox_tts(
+                        text,
+                        ref_audio or '',
+                        0.5,  # exaggeration
+                        0.8,  # temperature
+                        0,    # seed
+                        0.5,  # cfg_weight
+                        300,  # chunk_size
+                        effects_settings,
+                        audio_format,
+                        skip_file_saving=True
+                    )
+                elif selected_engine == 'kokoro' or selected_engine == 'Kokoro TTS':
+                    result = generate_kokoro_tts(
+                        text,
+                        'af_heart',  # default voice
+                        1.0,         # speed
+                        effects_settings,
+                        audio_format,
+                        skip_file_saving=True
+                    )
+                elif selected_engine == 'Fish Speech':
+                    print(f"🐟 Using Fish Speech for {speaker}")
+                    # Simplified Fish Speech call
+                    result = generate_fish_speech_simple(
+                        text,
+                        ref_audio,
+                        effects_settings,
+                        audio_format
+                    )
+                else:
+                    return None, f"❌ Unsupported TTS engine: {selected_engine}"
+                
+                if result[0] is None:
+                    return None, f"❌ Error generating audio for {speaker}: {result[1]}"
+                
+                audio_data, info_text = result
+                if audio_data is None:
+                    return None, f"❌ No audio generated for {speaker}"
+                
+                # Extract audio array from tuple
+                if isinstance(audio_data, tuple):
+                    sample_rate, line_audio = audio_data
+                else:
+                    return None, f"❌ Invalid audio format for {speaker}"
+                
+                conversation_audio_chunks.append(line_audio)
+                conversation_info.append({
+                    'speaker': speaker,
+                    'text': text[:50] + ('...' if len(text) > 50 else ''),
+                    'duration': len(line_audio) / sample_rate,
+                    'samples': len(line_audio)
+                })
+                
+                print(f"✅ Generated {len(line_audio)} samples for {speaker}")
+                
+            except Exception as gen_error:
+                import traceback
+                traceback.print_exc()
+                return None, f"❌ Error generating audio for {speaker}: {str(gen_error)}"
+        
+        # Combine all audio with proper timing
+        print("🎵 Combining conversation audio with proper timing...")
+        
+        # Calculate pause durations in samples
+        conversation_pause_samples = int(sample_rate * conversation_pause_duration)
+        transition_pause_samples = int(sample_rate * speaker_transition_pause)
+        
+        final_audio_parts = []
+        
+        for i, (audio_chunk, info) in enumerate(zip(conversation_audio_chunks, conversation_info)):
+            current_speaker = info['speaker']
+            
+            # Add audio chunk
+            final_audio_parts.append(audio_chunk)
+            
+            # Add pause after each line (except the last one)
+            if i < len(conversation_audio_chunks) - 1:
+                next_speaker = conversation_info[i + 1]['speaker']
+                
+                # Different pause duration based on speaker change
+                if current_speaker != next_speaker:
+                    # Speaker transition - longer pause
+                    pause_samples = conversation_pause_samples
+                else:
+                    # Same speaker continuing - shorter pause
+                    pause_samples = transition_pause_samples
+                
+                pause_audio = np.zeros(pause_samples)
+                final_audio_parts.append(pause_audio)
+        
+        # Concatenate all parts
+        final_conversation_audio = np.concatenate(final_audio_parts)
+        
+        # Save the conversation audio to outputs folder
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename_base = f"conversation_{selected_engine.lower().replace(' ', '_')}_{timestamp}"
+            filepath, filename = save_audio_with_format(
+                final_conversation_audio, sample_rate, audio_format, output_folder, filename_base
+            )
+            print(f"💾 Conversation saved as: {filename}")
+        except Exception as save_error:
+            print(f"Warning: Could not save conversation file: {save_error}")
+            filename = "conversation_audio"
+        
+        # Create conversation summary
+        total_duration = len(final_conversation_audio) / sample_rate
+        unique_speakers = len(set([info['speaker'] for info in conversation_info]))
+        
+        summary = {
+            'total_lines': len(conversation),
+            'unique_speakers': unique_speakers,
+            'total_duration': total_duration,
+            'speakers': list(set([info['speaker'] for info in conversation_info])),
+            'conversation_info': conversation_info,
+            'engine_used': selected_engine,
+            'saved_file': filename
+        }
+        
+        print(f"✅ Conversation generated: {len(conversation)} lines, {unique_speakers} speakers, {total_duration:.1f}s")
+        
+        return (sample_rate, final_conversation_audio), summary
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return None, f"❌ Conversation generation error: {str(e)}"
+
+def generate_fish_speech_simple(text, ref_audio=None, effects_settings=None, audio_format="wav"):
+    """Simplified Fish Speech generation for conversation mode."""
+    if not FISH_SPEECH_AVAILABLE:
+        return None, "❌ Fish Speech not available"
+    
+    if not MODEL_STATUS['fish_speech']['loaded'] or FISH_SPEECH_ENGINE is None:
+        return None, "❌ Fish Speech not loaded"
+    
+    try:
+        print(f"🐟 Fish Speech generating: {text[:50]}...")
+        
+        # Prepare reference audio if provided
+        references = []
+        if ref_audio and os.path.exists(ref_audio):
+            print(f"🎤 Using reference audio: {ref_audio}")
+            ref_audio_bytes = audio_to_bytes(ref_audio)
+            references.append(ServeReferenceAudio(audio=ref_audio_bytes, text=""))
+        
+        # Create simple TTS request
+        request = ServeTTSRequest(
+            text=text,
+            references=references,
+            reference_id=None,
+            format="wav",
+            max_new_tokens=1024,  # Reduced for faster generation
+            chunk_length=300,    # Smaller chunks
+            top_p=0.8,
+            repetition_penalty=1.1,
+            temperature=0.8,
+            streaming=False,
+            use_memory_cache="off",
+            seed=None,
+            normalize=True
+        )
+        
+        print("🐟 Calling Fish Speech inference...")
+        
+        # Generate audio
+        results = list(FISH_SPEECH_ENGINE.inference(request))
+        
+        # Find the final result
+        final_result = None
+        for result in results:
+            if result.code == "final":
+                final_result = result
+                break
+            elif result.code == "error":
+                return None, f"❌ Fish Speech error: {str(result.error)}"
+        
+        if final_result is None or final_result.error is not None:
+            error_msg = str(final_result.error) if final_result else "No audio generated"
+            return None, f"❌ Fish Speech error: {error_msg}"
+        
+        # Extract audio data
+        sample_rate, audio_data = final_result.audio
+        
+        # Convert to float32
+        if audio_data.dtype != np.float32:
+            audio_data = audio_data.astype(np.float32)
+        
+        # Simple normalization
+        peak = np.max(np.abs(audio_data))
+        if peak > 1.0:
+            audio_data = audio_data / peak
+        
+        print(f"✅ Fish Speech generated: {len(audio_data)} samples")
+        
+        return (sample_rate, audio_data), "✅ Generated with Fish Speech"
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return None, f"❌ Fish Speech error: {str(e)}"
+
+def format_conversation_info(summary):
+    """Format conversation summary for display."""
+    if isinstance(summary, str):
+        return summary
+    
+    try:
+        saved_file = summary.get('saved_file', 'conversation_audio')
+        engine_used = summary.get('engine_used', 'Unknown')
+        
+        info_text = f"""🎭 **Conversation Generated Successfully!**
+
+💾 **File Saved:** {saved_file}
+🎵 **Engine Used:** {engine_used}
+
+📊 **Summary:**
+• Total Lines: {summary['total_lines']} | Speakers: {summary['unique_speakers']} | Duration: {summary['total_duration']:.1f}s
+• Speakers: {', '.join(summary['speakers'])}
+
+📝 **Line Breakdown:**"""
+        
+        for i, line_info in enumerate(summary['conversation_info'], 1):
+            speaker = line_info['speaker']
+            text_preview = line_info['text']
+            duration = line_info['duration']
+            info_text += f"\n{i:2d}. {speaker}: \"{text_preview}\" ({duration:.1f}s)"
+        
+        info_text += f"\n\n✅ **Status:** Conversation audio saved to outputs folder!"
+        
+        return info_text.strip()
+        
+    except Exception as e:
+        return f"Error formatting conversation info: {str(e)}"
 
 # ===== HELPER FUNCTIONS =====
 def save_audio_with_format(audio_data, sample_rate, output_format="wav", output_folder=None, filename_base=None):
@@ -400,6 +776,131 @@ def unload_fish_speech():
         error_msg = f"❌ Error unloading Fish Speech: {e}"
         print(error_msg)
         return error_msg
+
+def clear_gradio_temp_files():
+    """Clear Gradio temporary files from the temp directory."""
+    try:
+        import tempfile
+        import os
+        
+        deleted_count = 0
+        deleted_size = 0
+        
+        # Function to calculate directory size and count files
+        def get_directory_size(directory):
+            total_size = 0
+            file_count = 0
+            for dirpath, dirnames, filenames in os.walk(directory):
+                for filename in filenames:
+                    filepath = os.path.join(dirpath, filename)
+                    try:
+                        total_size += os.path.getsize(filepath)
+                        file_count += 1
+                    except (OSError, IOError):
+                        pass
+            return total_size, file_count
+        
+        # Check for Pinokio environment - look for cache/GRADIO_TEMP_DIR
+        # Try multiple possible locations for Pinokio cache
+        possible_pinokio_paths = [
+            os.path.join(os.getcwd(), "cache", "GRADIO_TEMP_DIR"),  # Current directory
+            os.path.join(os.path.dirname(os.getcwd()), "cache", "GRADIO_TEMP_DIR"),  # Parent directory (likely for app/ subdirectory)
+            os.path.join(os.path.dirname(os.path.dirname(os.getcwd())), "cache", "GRADIO_TEMP_DIR"),  # Grandparent directory
+        ]
+        
+        # Also try using the workspace path if we can detect it
+        current_path = os.getcwd()
+        if "Ultimate-TTS-Studio-SUP3R-Edition-Pinokio.git" in current_path:
+            git_root = current_path.split("Ultimate-TTS-Studio-SUP3R-Edition-Pinokio.git")[0] + "Ultimate-TTS-Studio-SUP3R-Edition-Pinokio.git"
+            possible_pinokio_paths.append(os.path.join(git_root, "cache", "GRADIO_TEMP_DIR"))
+        
+        # Check Pinokio cache directories silently
+        pinokio_cache_found = False
+        for pinokio_cache_dir in possible_pinokio_paths:
+            if os.path.exists(pinokio_cache_dir):
+                pinokio_cache_found = True
+                try:
+                    size, count = get_directory_size(pinokio_cache_dir)
+                    shutil.rmtree(pinokio_cache_dir)
+                    deleted_size += size
+                    deleted_count += count
+                except (OSError, IOError, PermissionError) as e:
+                    pass  # Silent failure
+                break  # Only delete the first one found
+        
+        # Check standard Windows temp location: AppData\Local\Temp\gradio
+        if os.name == 'nt':  # Windows
+            user_temp = os.path.expanduser(r"~\AppData\Local\Temp\gradio")
+        else:  # Linux/Mac
+            user_temp = os.path.join(tempfile.gettempdir(), "gradio")
+            
+        if os.path.exists(user_temp):
+            try:
+                size, count = get_directory_size(user_temp)
+                shutil.rmtree(user_temp)
+                deleted_size += size
+                deleted_count += count
+            except (OSError, IOError, PermissionError) as e:
+                pass  # Silent failure
+        
+        # Also check default temp directory for any gradio patterns
+        temp_dir = tempfile.gettempdir()
+        gradio_temp_patterns = [
+            os.path.join(temp_dir, "gradio*"),
+            os.path.join(temp_dir, "*gradio*"),
+        ]
+        
+        for pattern in gradio_temp_patterns:
+            for path in glob.glob(pattern):
+                if os.path.exists(path):
+                    try:
+                        if os.path.isfile(path):
+                            size = os.path.getsize(path)
+                            os.remove(path)
+                            deleted_count += 1
+                            deleted_size += size
+                        elif os.path.isdir(path):
+                            size, count = get_directory_size(path)
+                            shutil.rmtree(path)
+                            deleted_size += size
+                            deleted_count += count
+                    except (OSError, IOError, PermissionError) as e:
+                        continue  # Silent failure
+        
+        # Also check for common temp audio files in current directory
+        current_dir_patterns = [
+            "tmp*.wav", "tmp*.mp3", "tmp*.flac",
+            "gradio_*.wav", "gradio_*.mp3", "gradio_*.flac",
+            "temp_*.wav", "temp_*.mp3", "temp_*.flac"
+        ]
+        
+        for pattern in current_dir_patterns:
+            for filepath in glob.glob(pattern):
+                try:
+                    size = os.path.getsize(filepath)
+                    os.remove(filepath)
+                    deleted_count += 1
+                    deleted_size += size
+                except (OSError, IOError, PermissionError):
+                    continue
+        
+        # Format size for display
+        if deleted_size > 1024**3:  # GB
+            size_str = f"{deleted_size / (1024**3):.2f} GB"
+        elif deleted_size > 1024**2:  # MB
+            size_str = f"{deleted_size / (1024**2):.2f} MB"
+        elif deleted_size > 1024:  # KB
+            size_str = f"{deleted_size / 1024:.2f} KB"
+        else:
+            size_str = f"{deleted_size} bytes"
+        
+        if deleted_count > 0:
+            return f"✅ Successfully deleted {deleted_count} temporary files ({size_str} freed)"
+        else:
+            return "ℹ️ No Gradio temporary files found to delete"
+            
+    except Exception as e:
+        return f"❌ Error clearing temp files: {str(e)}"
 
 def get_model_status():
     """Get current status of all models."""
@@ -2749,6 +3250,7 @@ def create_gradio_interface():
             mutations.forEach(function(mutation) {
                 if (mutation.addedNodes.length > 0) {
                     setupVoiceSelection();
+                    setupTabSwitching();
                 }
             });
         });
@@ -2756,6 +3258,55 @@ def create_gradio_interface():
         contentObserver.observe(document.body, {
             childList: true,
             subtree: true
+        });
+        
+        // Tab switching functionality
+        function setupTabSwitching() {
+            const tabs = document.querySelectorAll('.gradio-tabs .tab-nav button');
+            
+            function findButtonByText(text) {
+                return Array.from(document.querySelectorAll('button')).find(btn => btn.textContent.includes(text));
+            }
+            
+            function findTextboxByLabel(labelText) {
+                const labels = Array.from(document.querySelectorAll('label'));
+                const label = labels.find(l => l.textContent.includes(labelText));
+                if (label) {
+                    const textbox = label.parentElement.querySelector('textarea');
+                    return textbox;
+                }
+                return null;
+            }
+            
+            tabs.forEach((tab, index) => {
+                tab.addEventListener('click', function() {
+                    setTimeout(() => {
+                        const generateSpeechBtn = findButtonByText('🚀 Generate Speech');
+                        const generateConversationBtn = findButtonByText('🎭 Generate Conversation');
+                        const statusOutput = findTextboxByLabel('📊 Status');
+                        const conversationInfo = findTextboxByLabel('📊 Conversation Summary');
+                        
+                        if (tab.textContent.includes('TEXT TO SYNTHESIZE')) {
+                            // Single voice mode
+                            if (generateSpeechBtn) generateSpeechBtn.closest('.gradio-column').style.display = 'block';
+                            if (generateConversationBtn) generateConversationBtn.closest('.gradio-column').style.display = 'none';
+                            if (statusOutput) statusOutput.closest('.gradio-textbox').style.display = 'block';
+                            if (conversationInfo) conversationInfo.closest('.gradio-textbox').style.display = 'none';
+                        } else if (tab.textContent.includes('CONVERSATION MODE')) {
+                            // Conversation mode
+                            if (generateSpeechBtn) generateSpeechBtn.closest('.gradio-column').style.display = 'none';
+                            if (generateConversationBtn) generateConversationBtn.closest('.gradio-column').style.display = 'block';
+                            if (statusOutput) statusOutput.closest('.gradio-textbox').style.display = 'none';
+                            if (conversationInfo) conversationInfo.closest('.gradio-textbox').style.display = 'block';
+                        }
+                    }, 100);
+                });
+            });
+        }
+        
+        // Initialize tab switching on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            setupTabSwitching();
         });
         </script>
         """
@@ -2882,18 +3433,174 @@ def create_gradio_interface():
                             elem_classes=["fade-in"],
                             scale=1
                         )
+                
+                # System Cleanup - Compact
+                with gr.Column():
+                    with gr.Row():
+                        gr.Markdown("🧹 **System Cleanup**", elem_classes=["fade-in"])
+                        cleanup_status = gr.Markdown(
+                            value="💾 Temp files ready",
+                            elem_classes=["fade-in"]
+                        )
+                    with gr.Row():
+                        clear_temp_btn = gr.Button(
+                            "🧹 Clear Temp Files",
+                            variant="secondary",
+                            size="sm",
+                            elem_classes=["fade-in"],
+                            scale=2
+                        )
         
-        # Main input section with glassmorphism
+        # Main input section with tabs for single voice and conversation mode
         with gr.Row():
             with gr.Column(scale=3):
-                # Text input with enhanced styling
-                text = gr.Textbox(
-                    value="Hello! This is a demonstration of the ULTIMATE TTS STUDIO. You can choose between ChatterboxTTS and Fish Speech for custom voice cloning or Kokoro TTS for high-quality pre-trained voices.",
-                    label="📝 Text to synthesize",
-                    lines=5,
-                    placeholder="Enter your text here...",
-                    elem_classes=["fade-in"]
-                )
+                # Tabs for different input modes
+                with gr.Tabs(elem_classes=["fade-in"]) as input_tabs:
+                    # Single Voice Tab
+                    with gr.TabItem("📝 TEXT TO SYNTHESIZE", id="single_voice"):
+                        # Text input with enhanced styling
+                        text = gr.Textbox(
+                            value="Hello! This is a demonstration of the ULTIMATE TTS STUDIO. You can choose between ChatterboxTTS and Fish Speech for custom voice cloning or Kokoro TTS for high-quality pre-trained voices.",
+                            label="📝 Text to synthesize",
+                            lines=5,
+                            placeholder="Enter your text here...",
+                            elem_classes=["fade-in"]
+                        )
+                    
+                    # Conversation Mode Tab
+                    with gr.TabItem("🎭 CONVERSATION MODE", id="conversation_mode"):
+                        with gr.Row():
+                            with gr.Column(scale=2):
+                                # Script input
+                                conversation_script = gr.Textbox(
+                                    label="📝 Conversation Script",
+                                    placeholder="""Enter conversation in this format:
+
+Alice: Hello there! How are you doing today?
+Bob: I'm doing great, thanks for asking! How about you?
+Alice: I'm wonderful! I just got back from vacation.
+Bob: That sounds amazing! Where did you go?
+Alice: I went to Japan. It was absolutely incredible!""",
+                                    lines=8,
+                                    info="Format: 'SpeakerName: Text' - Each line should start with speaker name followed by colon",
+                                    elem_classes=["fade-in"]
+                                )
+                                
+                                # Control buttons
+                                with gr.Row():
+                                    analyze_script_btn = gr.Button(
+                                        "🔍 Analyze Script",
+                                        variant="secondary",
+                                        elem_classes=["fade-in"]
+                                    )
+                                    example_script_btn = gr.Button(
+                                        "📋 Load Example",
+                                        variant="secondary",
+                                        elem_classes=["fade-in"]
+                                    )
+                                    clear_script_btn = gr.Button(
+                                        "🗑️ Clear Script",
+                                        variant="secondary",
+                                        elem_classes=["fade-in"]
+                                    )
+                                
+                                # Timing controls
+                                with gr.Row():
+                                    conversation_pause = gr.Slider(
+                                        0.05, 2.0, step=0.1, value=0.8,
+                                        label="🔇 Speaker Change Pause (s)",
+                                        info="Pause duration when speakers change",
+                                        elem_classes=["fade-in"]
+                                    )
+                                    speaker_transition_pause = gr.Slider(
+                                        0.1, 1.0, step=0.1, value=0.3,
+                                        label="⏸️ Same Speaker Pause (s)",
+                                        info="Pause when same speaker continues",
+                                        elem_classes=["fade-in"]
+                                    )
+                            
+                            with gr.Column(scale=1):
+                                # Speaker detection results
+                                detected_speakers = gr.Textbox(
+                                    label="🔍 Detected Speakers",
+                                    value="No speakers detected",
+                                    interactive=False,
+                                    lines=8,
+                                    elem_classes=["fade-in"]
+                                )
+                                
+                                # Simple info about how it works
+                                gr.Markdown("""
+                                <div style='padding: 10px; background: rgba(102, 126, 234, 0.05); border-radius: 8px; border-left: 3px solid #667eea;'>
+                                    <p style='margin: 0; font-size: 0.85em; opacity: 0.8;'>
+                                        <strong>💡 How it works:</strong><br/>
+                                        • Analyze script to detect speakers<br/>
+                                        • Upload voice samples for each speaker<br/>
+                                        • Select TTS engine below<br/>
+                                        • Generate conversation!
+                                    </p>
+                                </div>
+                                """)
+                        
+                        # Voice Samples Section for Conversation Mode
+                        with gr.Group():
+                            gr.Markdown("### 🎤 Voice Samples for Speakers")
+                            gr.Markdown("*Upload voice samples for each speaker (required for ChatterboxTTS and Fish Speech only)*")
+                            
+                            # Dynamic voice sample uploads (up to 5 speakers)
+                            with gr.Row():
+                                with gr.Column():
+                                    speaker_1_audio = gr.Audio(
+                                        sources=["upload", "microphone"],
+                                        type="filepath",
+                                        label="🎤 Speaker 1 Voice Sample",
+                                        visible=False,
+                                        elem_classes=["fade-in"]
+                                    )
+                                    speaker_2_audio = gr.Audio(
+                                        sources=["upload", "microphone"],
+                                        type="filepath",
+                                        label="🎤 Speaker 2 Voice Sample",
+                                        visible=False,
+                                        elem_classes=["fade-in"]
+                                    )
+                                    speaker_3_audio = gr.Audio(
+                                        sources=["upload", "microphone"],
+                                        type="filepath",
+                                        label="🎤 Speaker 3 Voice Sample",
+                                        visible=False,
+                                        elem_classes=["fade-in"]
+                                    )
+                                
+                                with gr.Column():
+                                    speaker_4_audio = gr.Audio(
+                                        sources=["upload", "microphone"],
+                                        type="filepath",
+                                        label="🎤 Speaker 4 Voice Sample",
+                                        visible=False,
+                                        elem_classes=["fade-in"]
+                                    )
+                                    speaker_5_audio = gr.Audio(
+                                        sources=["upload", "microphone"],
+                                        type="filepath",
+                                        label="🎤 Speaker 5 Voice Sample",
+                                        visible=False,
+                                        elem_classes=["fade-in"]
+                                    )
+                            
+                            # Help text for voice samples
+                            gr.Markdown("""
+                            <div style='margin-top: 10px; padding: 10px; background: rgba(102, 126, 234, 0.05); border-radius: 8px; border-left: 3px solid #667eea;'>
+                                <p style='margin: 0; font-size: 0.85em; opacity: 0.8;'>
+                                    <strong>💡 Voice Sample Tips:</strong><br/>
+                                    • Upload clear audio samples (3-10 seconds work best)<br/>
+                                    • <strong>ChatterboxTTS:</strong> Voice samples required for voice cloning ✅<br/>
+                                    • <strong>Fish Speech:</strong> Voice samples help with voice matching ✅<br/>
+                                    • <strong>Kokoro TTS:</strong> ❌ Not supported in conversation mode (uses pre-trained voices only)<br/>
+                                    • Voice samples will be automatically assigned when you analyze the script
+                                </p>
+                            </div>
+                            """)
                 
                 # TTS Engine Selection with custom styling
                 tts_engine = gr.Radio(
@@ -2935,14 +3642,35 @@ def create_gradio_interface():
                     interactive=False,
                     elem_classes=["fade-in"]
                 )
+                
+                # Conversation info output (visible for conversation mode)
+                conversation_info = gr.Textbox(
+                    label="📊 Conversation Summary",
+                    lines=8,
+                    interactive=False,
+                    elem_classes=["fade-in"],
+                    visible=True,
+                    value="Ready for conversation generation..."
+                )
         
-        # Generate button with enhanced animation
-        generate_btn = gr.Button(
-            "🚀 Generate Speech",
-            variant="primary",
-            size="lg",
-            elem_classes=["generate-btn", "fade-in"]
-        )
+        # Generate buttons - separate for single voice and conversation modes
+        with gr.Row():
+            with gr.Column():
+                generate_btn = gr.Button(
+                    "🚀 Generate Speech",
+                    variant="primary",
+                    size="lg",
+                    elem_classes=["generate-btn", "fade-in"],
+                    visible=True
+                )
+            with gr.Column():
+                generate_conversation_btn = gr.Button(
+                    "🎭 Generate Conversation",
+                    variant="primary",
+                    size="lg",
+                    elem_classes=["generate-btn", "fade-in"],
+                    visible=False
+                )
         
         # Engine-specific settings - All visible at once for easy access
         gr.Markdown("## 🎛️ TTS Engine Settings", elem_classes=["fade-in"])
@@ -2954,6 +3682,7 @@ def create_gradio_interface():
                 if CHATTERBOX_AVAILABLE:
                     with gr.Group() as chatterbox_controls:
                         gr.Markdown("**🎤 ChatterboxTTS - Voice cloning from reference audio**")
+                        gr.Markdown("*💡 Try the sample file: `sample/Sample.wav`*", elem_classes=["fade-in"])
                         
                         with gr.Row():
                             with gr.Column(scale=2):
@@ -2961,7 +3690,7 @@ def create_gradio_interface():
                                     sources=["upload", "microphone"],
                                     type="filepath",
                                     label="🎤 Reference Audio File (Optional)",
-                                    value="https://storage.googleapis.com/chatterbox-demo-samples/prompts/female_shadowheart4.flac",
+                                    value=None,
                                     elem_classes=["fade-in"]
                                 )
                             
@@ -3115,6 +3844,7 @@ def create_gradio_interface():
                 if FISH_SPEECH_AVAILABLE:
                     with gr.Group() as fish_speech_controls:
                         gr.Markdown("**🐟 Fish Speech - Natural text-to-speech synthesis**")
+                        gr.Markdown("*💡 Try the sample file: `sample/Sample.wav`*", elem_classes=["fade-in"])
                         
                         with gr.Row():
                             with gr.Column(scale=2):
@@ -3122,7 +3852,7 @@ def create_gradio_interface():
                                     sources=["upload", "microphone"],
                                     type="filepath",
                                     label="🎤 Reference Audio File (Optional)",
-                                    value="https://storage.googleapis.com/chatterbox-demo-samples/prompts/female_shadowheart4.flac",
+                                    value=None,
                                     elem_classes=["fade-in"]
                                 )
                             
@@ -3346,6 +4076,8 @@ def create_gradio_interface():
                 </div>
                 """)
         
+
+
         # Audio Effects in a separate expandable section
         with gr.Accordion("🎵 Audio Effects Studio", open=False, elem_classes=["fade-in"]):
             gr.Markdown("""
@@ -3475,6 +4207,18 @@ def create_gradio_interface():
             # Don't change engine selection when unloading
             return fish_status_text
         
+        def handle_clear_temp_files():
+            """Handle clearing Gradio temporary files and reset audio components."""
+            result_message = clear_gradio_temp_files()
+            # Also clear the reference audio components since their temp files are gone
+            chatterbox_audio_update = gr.update(value=None)
+            fish_audio_update = gr.update(value=None)
+            # Clear conversation mode speaker audio components too
+            speaker_audio_updates = [gr.update(value=None) for _ in range(5)]
+            # Return a simple, clean message instead of technical details
+            simple_message = "✅ All temporary files cleared successfully"
+            return simple_message, chatterbox_audio_update, fish_audio_update, *speaker_audio_updates
+        
         # ChatterboxTTS management
         if CHATTERBOX_AVAILABLE:
             load_chatterbox_btn.click(
@@ -3508,6 +4252,13 @@ def create_gradio_interface():
                 outputs=[fish_status]
             )
         
+        # Cleanup management
+        clear_temp_btn.click(
+            fn=handle_clear_temp_files,
+            outputs=[cleanup_status, chatterbox_ref_audio, fish_ref_audio, 
+                    speaker_1_audio, speaker_2_audio, speaker_3_audio, speaker_4_audio, speaker_5_audio]
+        )
+        
         # Main generation event handler
         generate_btn.click(
             fn=generate_unified_tts,
@@ -3523,6 +4274,246 @@ def create_gradio_interface():
                 enable_pitch, pitch_semitones
             ],
             outputs=[audio_output, status_output]
+        )
+        
+        # Conversation Mode Event Handlers
+        def handle_analyze_script(script_text, selected_engine):
+            """Analyze the conversation script and return detected speakers."""
+            # Check if Kokoro is selected and prevent analysis
+            if selected_engine == "Kokoro TTS":
+                error_text = (
+                    "⚠️ Script Analysis Not Available with Kokoro TTS\n\n"
+                    "Conversation mode is not supported with Kokoro TTS.\n"
+                    "Please switch to ChatterboxTTS or Fish Speech."
+                )
+                return (error_text, 
+                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), 
+                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False))
+            
+            if not script_text.strip():
+                return ("No script provided", 
+                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), 
+                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False))
+            
+            speakers = get_speaker_names_from_script(script_text)
+            
+            if not speakers:
+                return ("No speakers detected. Please check script format.", 
+                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), 
+                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False))
+            
+            speakers_text = f"Found {len(speakers)} speakers:\n" + "\n".join([f"• {speaker}" for speaker in speakers])
+            speakers_text += f"\n\n📝 Instructions:\n1. Upload voice samples below\n2. Select TTS engine\n3. Click 'Generate Conversation'"
+            
+            # Show/hide voice sample uploads based on number of speakers
+            audio_updates = []
+            for i in range(5):  # We have 5 audio components
+                if i < len(speakers):
+                    # Show and update label with speaker name
+                    audio_updates.append(gr.update(visible=True, label=f"🎤 {speakers[i]} Voice Sample"))
+                else:
+                    # Hide unused audio components
+                    audio_updates.append(gr.update(visible=False))
+            
+            # Show the conversation generate button when analysis is successful
+            generate_btn_update = gr.update(visible=True)
+            
+            return speakers_text, generate_btn_update, *audio_updates
+        
+
+        
+        def handle_example_script(selected_engine):
+            """Load an example conversation script."""
+            example_script = """Alice: Hello there! How are you doing today?
+Bob: I'm doing great, thanks for asking! How about you?
+Alice: I'm wonderful! I just got back from vacation.
+Bob: That sounds amazing! Where did you go?
+Alice: I went to Japan. It was absolutely incredible!
+Bob: Japan must have been fascinating! What was your favorite part?
+Alice: The food was unbelievable, and the people were so kind.
+Bob: I'd love to visit Japan someday. Any recommendations?
+Alice: Definitely visit Kyoto and try authentic ramen!"""
+            
+            # Check if Kokoro is selected
+            if selected_engine == "Kokoro TTS":
+                error_text = (
+                    "⚠️ Example Script Not Available with Kokoro TTS\n\n"
+                    "Conversation mode is not supported with Kokoro TTS.\n"
+                    "Please switch to ChatterboxTTS or Fish Speech."
+                )
+                return (example_script, error_text, gr.update(visible=False),
+                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), 
+                        gr.update(visible=False), gr.update(visible=False))
+            
+            # Auto-analyze the example script
+            speakers = get_speaker_names_from_script(example_script)
+            speakers_text = f"Found {len(speakers)} speakers:\n" + "\n".join([f"• {speaker}" for speaker in speakers])
+            speakers_text += f"\n\n📝 Instructions:\n1. Upload voice samples below\n2. Select TTS engine\n3. Click 'Generate Conversation'"
+            
+            # Show/hide voice sample uploads based on number of speakers
+            audio_updates = []
+            for i in range(5):  # We have 5 audio components
+                if i < len(speakers):
+                    # Show and update label with speaker name
+                    audio_updates.append(gr.update(visible=True, label=f"🎤 {speakers[i]} Voice Sample"))
+                else:
+                    # Hide unused audio components
+                    audio_updates.append(gr.update(visible=False))
+            
+            # Show the conversation generate button when example is loaded
+            generate_btn_update = gr.update(visible=True)
+            
+            return example_script, speakers_text, generate_btn_update, *audio_updates
+        
+        def handle_clear_script():
+            """Clear the conversation script and reset components."""
+            # Hide all audio components and the generate button
+            audio_updates = [gr.update(visible=False, value=None) for _ in range(5)]
+            generate_btn_update = gr.update(visible=False)
+            return "", "No speakers detected", generate_btn_update, *audio_updates
+        
+        def handle_tts_engine_change(selected_engine):
+            """Handle TTS engine selection changes and update UI accordingly."""
+            print(f"🎯 TTS Engine changed to: {selected_engine}")
+            
+            # Check if Kokoro is selected - disable conversation mode
+            if selected_engine == "Kokoro TTS":
+                # Disable conversation mode when Kokoro is selected
+                conversation_info_text = (
+                    "⚠️ Conversation Mode Not Available with Kokoro TTS\n\n"
+                    "Kokoro TTS uses pre-trained voice models and doesn't support "
+                    "voice cloning from reference audio samples.\n\n"
+                    "For conversation mode, please use:\n"
+                    "• ChatterboxTTS - Voice cloning with reference audio\n"
+                    "• Fish Speech - Natural TTS with voice matching\n\n"
+                    "Switch to ChatterboxTTS or Fish Speech to use conversation mode."
+                )
+                return (
+                    gr.update(visible=False),  # Hide conversation generate button
+                    gr.update(visible=True, value=conversation_info_text),  # Show warning in conversation info
+                    gr.update(interactive=False),  # Disable conversation script
+                    gr.update(interactive=False),  # Disable analyze button
+                    gr.update(interactive=False),  # Disable example button
+                    gr.update(interactive=False),  # Disable clear button
+                    gr.update(interactive=False),  # Disable pause slider
+                    gr.update(interactive=False),  # Disable transition pause slider
+                )
+            else:
+                # Enable conversation mode for ChatterboxTTS and Fish Speech
+                conversation_info_text = "Ready for conversation generation..."
+                return (
+                    gr.update(visible=False),  # Keep conversation button hidden until script analyzed
+                    gr.update(visible=True, value=conversation_info_text),  # Reset conversation info
+                    gr.update(interactive=True),  # Enable conversation script
+                    gr.update(interactive=True),  # Enable analyze button
+                    gr.update(interactive=True),  # Enable example button
+                    gr.update(interactive=True),  # Enable clear button
+                    gr.update(interactive=True),  # Enable pause slider
+                    gr.update(interactive=True),  # Enable transition pause slider
+                )
+
+        def handle_generate_conversation_simple(script_text, pause_duration, transition_pause, audio_format, voice_samples, selected_engine):
+            """Generate the multi-voice conversation with voice samples - Simplified version."""
+            print(f"🎭 Conversation handler called with engine: {selected_engine}")
+            
+            # Check if Kokoro is selected and reject
+            if selected_engine == "Kokoro TTS":
+                error_msg = (
+                    "❌ Conversation Mode Not Supported with Kokoro TTS\n\n"
+                    "Kokoro TTS uses pre-trained voice models and doesn't support "
+                    "voice cloning from reference audio samples required for conversation mode.\n\n"
+                    "Please switch to ChatterboxTTS or Fish Speech for conversation generation."
+                )
+                return None, error_msg
+            
+            if not script_text.strip():
+                return None, "❌ No conversation script provided"
+            
+            try:
+                # Generate the conversation audio using the simplified function
+                result = generate_conversation_audio_simple(
+                    script_text,
+                    voice_samples,
+                    selected_engine=selected_engine,
+                    conversation_pause_duration=pause_duration,
+                    speaker_transition_pause=transition_pause,
+                    effects_settings=None,  # Effects will be applied from the main UI
+                    audio_format=audio_format
+                )
+                
+                if result[0] is None:
+                    print(f"❌ Conversation generation failed: {result[1]}")
+                    return None, result[1]  # Return error message
+                
+                audio_data, summary = result
+                summary_text = format_conversation_info(summary)
+                
+                print(f"✅ Conversation generated successfully, returning summary: {summary_text[:100]}...")
+                return audio_data, summary_text
+                
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                error_msg = f"❌ Generation error: {str(e)}"
+                print(f"❌ Exception in conversation handler: {error_msg}")
+                return None, error_msg
+        
+        # Wire up conversation mode event handlers
+        analyze_script_btn.click(
+            fn=handle_analyze_script,
+            inputs=[conversation_script, tts_engine],
+            outputs=[detected_speakers, generate_conversation_btn,
+                    speaker_1_audio, speaker_2_audio, speaker_3_audio, 
+                    speaker_4_audio, speaker_5_audio]
+        )
+        
+
+        
+        example_script_btn.click(
+            fn=handle_example_script,
+            inputs=[tts_engine],
+            outputs=[conversation_script, detected_speakers, generate_conversation_btn,
+                    speaker_1_audio, speaker_2_audio, speaker_3_audio, 
+                    speaker_4_audio, speaker_5_audio]
+        )
+        
+        clear_script_btn.click(
+            fn=handle_clear_script,
+            outputs=[conversation_script, detected_speakers, generate_conversation_btn,
+                    speaker_1_audio, speaker_2_audio, speaker_3_audio, 
+                    speaker_4_audio, speaker_5_audio]
+        )
+        
+        generate_conversation_btn.click(
+            fn=lambda script, pause, trans_pause, audio_fmt, s1, s2, s3, s4, s5, engine: handle_generate_conversation_simple(
+                script, pause, trans_pause, audio_fmt, [s1, s2, s3, s4, s5], engine
+            ),
+            inputs=[
+                conversation_script, 
+                conversation_pause, 
+                speaker_transition_pause,
+                audio_format,  # Use the same audio format selector as single voice mode
+                speaker_1_audio, speaker_2_audio, speaker_3_audio, 
+                speaker_4_audio, speaker_5_audio,
+                tts_engine  # Use the main TTS engine selector
+            ],
+            outputs=[audio_output, conversation_info]  # Use same audio output as single voice mode
+        )
+        
+        # Handle TTS engine changes to enable/disable conversation mode
+        tts_engine.change(
+            fn=handle_tts_engine_change,
+            inputs=[tts_engine],
+            outputs=[
+                generate_conversation_btn,  # Show/hide conversation button 
+                conversation_info,  # Update conversation info text
+                conversation_script,  # Enable/disable script input
+                analyze_script_btn,  # Enable/disable analyze button
+                example_script_btn,  # Enable/disable example button
+                clear_script_btn,  # Enable/disable clear button
+                conversation_pause,  # Enable/disable pause slider
+                speaker_transition_pause  # Enable/disable transition pause slider
+            ]
         )
         
         # eBook conversion event handlers
