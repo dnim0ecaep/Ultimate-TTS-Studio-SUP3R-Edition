@@ -1,5 +1,28 @@
 ## ⚠️ Notice: Major App Update
 
+### 📅 June 18, 2025
+
+We’ve pushed another exciting update packed with new functionality and improvements!
+
+### 🆕 New Additions & Improvements
+
+### 🗣️ TTS Integration Expanded
+
+* **Index-TTS** has been added as a supported speech engine.
+* All **TTS engines now work across all modes**, including narration, conversation, and ambient.
+
+### 💬 Kokoro Conversation Mode
+
+* **Kokoro** now fully supports **conversation mode**, offering a more dynamic and interactive experience.
+
+### ✅ Recommended Setup
+
+For the **smoothest installation and full feature compatibility**:
+
+* Use a **Conda environment**, or
+* Install via **[Pinokio](https://pinokio.co)** for the easiest experience.
+
+
 ### 📅 June 10, 2025
 
 We’re excited to announce a major update to the app!
