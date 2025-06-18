@@ -895,6 +895,13 @@ def generate_fish_speech_simple(text, ref_audio=None, effects_settings=None, aud
             ref_audio_bytes = audio_to_bytes(ref_audio)
             references.append(ServeReferenceAudio(audio=ref_audio_bytes, text=""))
         
+        # Generate consistent seed for voice consistency if no reference
+        seed = None
+        if not references:
+            import time
+            seed = int(time.time()) % 1000000
+            print(f"🐟 Using seed {seed} for voice consistency")
+        
         # Create simple TTS request
         request = ServeTTSRequest(
             text=text,
@@ -908,7 +915,7 @@ def generate_fish_speech_simple(text, ref_audio=None, effects_settings=None, aud
             temperature=0.8,
             streaming=False,
             use_memory_cache="off",
-            seed=None,
+            seed=seed,  # Use consistent seed
             normalize=True
         )
         
@@ -2185,6 +2192,18 @@ def generate_fish_speech_tts(
         
         all_audio_segments = []
         
+        # IMPORTANT: Generate a consistent seed for all chunks if no seed provided
+        # This ensures voice consistency across chunks when no reference audio is used
+        if fish_seed is None and not references:
+            # Generate a random seed for this session to maintain consistency
+            import time
+            fish_seed = int(time.time()) % 1000000
+            print(f"Fish Speech - Using consistent seed {fish_seed} for voice consistency")
+        
+        # If we have a reference audio from the first chunk, use it for subsequent chunks
+        # This helps maintain voice consistency
+        chunk_references = references.copy()
+        
         # Process each chunk separately
         for i, chunk_text in enumerate(text_chunks):
             print(f"Fish Speech - Processing chunk {i+1}/{len(text_chunks)}")
@@ -2192,7 +2211,7 @@ def generate_fish_speech_tts(
             # Create TTS request for this chunk
             request = ServeTTSRequest(
                 text=chunk_text,
-                references=references,
+                references=chunk_references,  # Use accumulated references
                 reference_id=None,
                 format="wav",
                 max_new_tokens=fish_max_tokens,
@@ -2202,7 +2221,7 @@ def generate_fish_speech_tts(
                 temperature=fish_temperature,
                 streaming=False,
                 use_memory_cache="off",
-                seed=fish_seed,
+                seed=fish_seed,  # Use consistent seed across all chunks
                 normalize=True  # Enable text normalization for better stability
             )
             
@@ -2231,6 +2250,44 @@ def generate_fish_speech_tts(
             
             all_audio_segments.append(chunk_audio_data)
             print(f"Fish Speech - Chunk {i+1} generated: {len(chunk_audio_data)} samples")
+            
+            # EXPERIMENTAL: If no reference was provided and this is the first chunk,
+            # save a portion of it to use as reference for subsequent chunks
+            # This helps maintain voice consistency
+            if i == 0 and not references and len(text_chunks) > 1:
+                try:
+                    # Create a temporary file for the reference
+                    import tempfile
+                    temp_ref_fd, temp_ref_path = tempfile.mkstemp(suffix=".wav")
+                    
+                    try:
+                        # Save first 3 seconds as reference (or entire chunk if shorter)
+                        ref_samples = min(len(chunk_audio_data), sample_rate * 3)
+                        ref_audio = chunk_audio_data[:ref_samples]
+                        
+                        # Close the file descriptor before writing
+                        os.close(temp_ref_fd)
+                        
+                        # Write the audio data
+                        write(temp_ref_path, sample_rate, (ref_audio * 32767).astype(np.int16))
+                        
+                        # Create reference for next chunks
+                        ref_audio_bytes = audio_to_bytes(temp_ref_path)
+                        chunk_references = [ServeReferenceAudio(audio=ref_audio_bytes, text=chunk_text[:100])]
+                        print(f"Fish Speech - Using first chunk as reference for voice consistency")
+                        
+                    finally:
+                        # Clean up temp file - use try/except to handle Windows file locking
+                        try:
+                            if os.path.exists(temp_ref_path):
+                                os.unlink(temp_ref_path)
+                        except Exception:
+                            # If we can't delete it immediately on Windows, it will be cleaned up later
+                            pass
+                            
+                except Exception as e:
+                    print(f"Fish Speech - Could not create reference from first chunk: {e}")
+                    # Continue without reference - will still use consistent seed
         
         # Concatenate all audio segments with small silence between chunks
         if len(all_audio_segments) == 1:
@@ -2951,6 +3008,17 @@ def convert_ebook_to_audiobook(
         audio_segments = []
         total_chunks = len(text_chunks)
         
+        # For Fish Speech without reference audio: generate a consistent seed for the entire audiobook
+        audiobook_fish_seed = fish_seed
+        if tts_engine == "Fish Speech" and audiobook_fish_seed is None and not fish_ref_audio:
+            import time
+            audiobook_fish_seed = int(time.time()) % 1000000
+            print(f"🐟 Using consistent seed {audiobook_fish_seed} for entire audiobook voice consistency")
+        
+        # For maintaining voice consistency across chunks in Fish Speech
+        fish_chunk_reference_audio = fish_ref_audio
+        fish_chunk_reference_text = fish_ref_text
+        
         for i, chunk in enumerate(text_chunks):
             print(f"Processing chunk {i+1}/{total_chunks}: {chunk['title']}")
             
@@ -2966,9 +3034,12 @@ def convert_ebook_to_audiobook(
                     chunk['content'], kokoro_voice, kokoro_speed, effects_settings, "wav", skip_file_saving=True  # Skip saving individual chunks
                 )
             elif tts_engine == "Fish Speech":
+                # Use consistent seed and potentially updated reference for Fish Speech
                 audio_result, status = generate_fish_speech_tts(
-                    chunk['content'], fish_ref_audio, fish_ref_text, fish_temperature, fish_top_p,
-                    fish_repetition_penalty, fish_max_tokens, fish_seed, effects_settings, "wav", skip_file_saving=True  # Skip saving individual chunks
+                    chunk['content'], fish_chunk_reference_audio, fish_chunk_reference_text, 
+                    fish_temperature, fish_top_p,
+                    fish_repetition_penalty, fish_max_tokens, audiobook_fish_seed, 
+                    effects_settings, "wav", skip_file_saving=True  # Skip saving individual chunks
                 )
             elif tts_engine == "IndexTTS":
                 audio_result, status = generate_indextts_tts(
@@ -2988,10 +3059,55 @@ def convert_ebook_to_audiobook(
             
             sample_rate, audio_data = audio_result
             audio_segments.append((sample_rate, audio_data, chunk['title']))
+            
+            # For Fish Speech: Use first chunk as reference for subsequent chunks if no reference provided
+            if (tts_engine == "Fish Speech" and i == 0 and not fish_ref_audio and 
+                total_chunks > 1 and len(audio_data) > 0):
+                try:
+                    import tempfile
+                    # Create a temporary reference from the first chunk
+                    temp_ref_fd, temp_ref_path = tempfile.mkstemp(suffix=".wav")
+                    
+                    try:
+                        # Save first 5 seconds as reference (or entire chunk if shorter)
+                        ref_samples = min(len(audio_data), sample_rate * 5)
+                        ref_audio = audio_data[:ref_samples]
+                        
+                        # Close the file descriptor before writing
+                        os.close(temp_ref_fd)
+                        
+                        # Write the audio data
+                        write(temp_ref_path, sample_rate, (ref_audio * 32767).astype(np.int16))
+                        
+                        # Update reference for next chunks
+                        fish_chunk_reference_audio = temp_ref_path
+                        fish_chunk_reference_text = chunk['content'][:200]  # First 200 chars as reference text
+                        print(f"🐟 Using first audiobook chunk as reference for voice consistency")
+                        
+                    except Exception as e:
+                        print(f"Warning: Could not create reference from first chunk: {e}")
+                        # Try to clean up if possible
+                        try:
+                            if os.path.exists(temp_ref_path):
+                                os.unlink(temp_ref_path)
+                        except:
+                            pass
+                            
+                except Exception as e:
+                    print(f"Warning: Could not setup chunk reference: {e}")
         
         # Concatenate all audio segments
         if not audio_segments:
             return None, "❌ No audio generated"
+        
+        # Clean up temporary reference file if it was created
+        if (tts_engine == "Fish Speech" and fish_chunk_reference_audio != fish_ref_audio and 
+            fish_chunk_reference_audio and os.path.exists(fish_chunk_reference_audio)):
+            try:
+                os.unlink(fish_chunk_reference_audio)
+                print("🧹 Cleaned up temporary reference file")
+            except Exception as e:
+                print(f"Warning: Could not clean up temp reference: {e}")
         
         # Use the sample rate from the first segment
         final_sample_rate = audio_segments[0][0]
@@ -4963,8 +5079,13 @@ Alice: I went to Japan. It was absolutely incredible!""",
                                     info="For reproducible results"
                                 )
                             
-                            gr.Markdown("### 📝 Text Processing")
-                            gr.Markdown("<p style='opacity: 0.7; margin-bottom: 10px;'>Fish Speech automatically splits long texts into chunks for better quality</p>")
+                            gr.Markdown("### 📝 Text Processing & Voice Consistency")
+                            gr.Markdown("""<p style='opacity: 0.7; margin-bottom: 10px;'>
+                            • Fish Speech automatically splits long texts into chunks for better quality<br/>
+                            • Without reference audio: Uses consistent seed across chunks to maintain voice<br/>
+                            • With reference audio: Voice cloning ensures consistency<br/>
+                            • Tip: Set a specific seed value for reproducible results
+                            </p>""")
                 else:
                     # Placeholder when Fish Speech is not available
                     with gr.Group():
@@ -5226,7 +5347,8 @@ Alice: I went to Japan. It was absolutely incredible!""",
                         <strong>💡 Best Results:</strong> .html files work best for automatic chapter detection.<br/>
                         <strong>⚡ Performance:</strong> Large books may take several minutes to convert depending on length and TTS engine.<br/>
                         <strong>📁 Large Files:</strong> Audiobooks >50MB or >30min will be saved to the audiobooks folder with a download link (browser can't play very large files).<br/>
-                        <strong>🎧 Playback:</strong> Use VLC, Windows Media Player, or any audio player for large audiobooks.
+                        <strong>🎧 Playback:</strong> Use VLC, Windows Media Player, or any audio player for large audiobooks.<br/>
+                        <strong>🐟 Fish Speech:</strong> Maintains consistent voice throughout the entire audiobook using smart seed management and reference cloning.
                     </p>
                 </div>
                 """)
