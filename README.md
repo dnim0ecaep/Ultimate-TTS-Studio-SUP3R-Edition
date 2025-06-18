@@ -88,15 +88,38 @@ This update brings key improvements to **performance**, **model management**, an
 > 🎧 **Please lower your volume and avoid using headphones** during initial tests.
 
 ---
+Here’s how you can revise your **🛠️ Installation** section to include the Windows-specific `pynini` error note clearly, without disrupting the existing structure:
+
+---
+
 ## 🛠️ Installation
 
-## Option 1. 
-Install via [Pinokio](https://pinokio-home.netlify.app/item?uri=https://github.com/SUP3RMASS1VE/Ultimate-TTS-Studio-SUP3R-Edition-Pinokio).
+> ⚠️ **Windows Users — Important Note on `pynini`**
+> If you encounter the following error when installing `pynini`:
+> `ERROR: Failed building wheel for pynini`
+> You can fix this by installing it via conda:
 
-### Option 2
+```bash
+# After activating your conda environment (e.g., conda activate index-tts)
+conda install -c conda-forge pynini==2.1.6
+pip install WeTextProcessing --no-deps
+```
+
+---
+
+## Option 1.
+
+Install via [Pinokio](https://pinokio.co)
+You can use the Pinokio script here for one-click setup:
+[Pinokio App Installer](https://pinokio-home.netlify.app/item?uri=https://github.com/SUP3RMASS1VE/Ultimate-TTS-Studio-SUP3R-Edition-Pinokio)
+
+---
+
+## Option 2
+
 [Espeak-ng](https://github.com/espeak-ng/espeak-ng) is needed for Kokoro to work at its best.
 
-1. Clone the repository
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/SUP3RMASS1VE/Ultimate-TTS-Studio-SUP3R-Edition.git
@@ -138,6 +161,7 @@ uv pip install -r requirements.txt
 ```
 
 > 💡 If you're not using `uv`, you can just use `pip install` in its place.
+
 
 ---
 
