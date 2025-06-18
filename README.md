@@ -98,6 +98,7 @@ Here’s how you can revise your **🛠️ Installation** section to include the
 > If you encounter the following error when installing `pynini`:
 > `ERROR: Failed building wheel for pynini`
 > You can fix this by installing it via conda:
+> Pynini and wetextprocessing is needed for index-tts to work at its best
 
 ```bash
 # After activating your conda environment (e.g., conda activate index-tts)
