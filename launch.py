@@ -11,17 +11,103 @@ import json
 import io
 from datetime import datetime
 from pathlib import Path
-from scipy.io import wavfile
-from scipy import signal
-import tempfile
-import shutil
-import glob
-from tqdm import tqdm
-from scipy.io.wavfile import write
+
+# ===== COMPREHENSIVE WARNING SUPPRESSION =====
+# Suppress all warnings to clean up console output
+warnings.filterwarnings('ignore')
+
+# Suppress specific warning categories
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=RuntimeWarning)
+
+# Set environment variables to suppress various library warnings
+os.environ['PYTHONWARNINGS'] = 'ignore'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow warnings
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Suppress tokenizer warnings
+
+# Suppress torch distributed warnings
+os.environ['TORCH_DISTRIBUTED_DEBUG'] = 'OFF'
+
+# Redirect stderr temporarily to suppress specific warnings during imports
+import contextlib
+from io import StringIO
+
+# Custom context manager to suppress specific warning patterns
+@contextlib.contextmanager
+def suppress_specific_warnings():
+    """Context manager to suppress specific warning patterns"""
+    old_stderr = sys.stderr
+    sys.stderr = captured_stderr = StringIO()
+    try:
+        yield
+    finally:
+        # Filter out specific warning patterns and only show important errors
+        captured_output = captured_stderr.getvalue()
+        filtered_lines = []
+        
+        # Patterns to completely suppress
+        suppress_patterns = [
+            'Setting ds_accelerator to cuda',
+            'cannot open input file',
+            'LINK : fatal error LNK1181',
+            'Redirects are currently not supported',
+            'DeepSpeed info:',
+            'Config parameter mp_size is deprecated',
+            'quantize_bits =',
+            'Removing weight norm',
+            'bigvgan weights restored',
+            'Text normalization dependencies not available',
+            'No module named \'pynini\'',
+            'Using fallback normalizer',
+            'test.c'
+        ]
+        
+        for line in captured_output.split('\n'):
+            should_suppress = False
+            for pattern in suppress_patterns:
+                if pattern in line:
+                    should_suppress = True
+                    break
+            
+            if not should_suppress and line.strip():
+                filtered_lines.append(line)
+        
+        # Only print non-suppressed lines
+        if filtered_lines:
+            sys.stderr = old_stderr
+            for line in filtered_lines:
+                print(line, file=sys.stderr)
+        
+        sys.stderr = old_stderr
+
+# ===== END WARNING SUPPRESSION =====
+
+# Add current directory to Python path for local imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
+# Add indextts module path for imports
+indextts_path = os.path.join(current_dir, 'indextts')
+if indextts_path not in sys.path:
+    sys.path.insert(0, indextts_path)
+
+# Use warning suppression context for imports that generate warnings
+with suppress_specific_warnings():
+    from scipy.io import wavfile
+    from scipy import signal
+    import tempfile
+    import shutil
+    import glob
+    from tqdm import tqdm
+    from scipy.io.wavfile import write
 
 # Chatterbox imports
 try:
-    from chatterbox.src.chatterbox.tts import ChatterboxTTS
+    with suppress_specific_warnings():
+        from chatterbox.src.chatterbox.tts import ChatterboxTTS
     CHATTERBOX_AVAILABLE = True
 except ImportError:
     CHATTERBOX_AVAILABLE = False
@@ -29,7 +115,8 @@ except ImportError:
 
 # Kokoro imports
 try:
-    from kokoro import KModel, KPipeline
+    with suppress_specific_warnings():
+        from kokoro import KModel, KPipeline
     KOKORO_AVAILABLE = True
 except ImportError:
     KOKORO_AVAILABLE = False
@@ -37,12 +124,13 @@ except ImportError:
 
 # Fish Speech imports
 try:
-    import queue
-    from fish_speech.inference_engine import TTSInferenceEngine
-    from fish_speech.models.dac.inference import load_model as load_decoder_model
-    from fish_speech.models.text2semantic.inference import launch_thread_safe_queue
-    from fish_speech.utils.schema import ServeTTSRequest, ServeReferenceAudio
-    from fish_speech.utils.file import audio_to_bytes
+    with suppress_specific_warnings():
+        import queue
+        from fish_speech.inference_engine import TTSInferenceEngine
+        from fish_speech.models.dac.inference import load_model as load_decoder_model
+        from fish_speech.models.text2semantic.inference import launch_thread_safe_queue
+        from fish_speech.utils.schema import ServeTTSRequest, ServeReferenceAudio
+        from fish_speech.utils.file import audio_to_bytes
     FISH_SPEECH_AVAILABLE = True
 except ImportError:
     FISH_SPEECH_AVAILABLE = False
@@ -50,12 +138,13 @@ except ImportError:
 
 # eBook Converter imports
 try:
-    from ebook_converter import (
-        EBookConverter, 
-        get_supported_formats, 
-        analyze_ebook, 
-        convert_ebook_to_text_chunks
-    )
+    with suppress_specific_warnings():
+        from ebook_converter import (
+            EBookConverter, 
+            get_supported_formats, 
+            analyze_ebook, 
+            convert_ebook_to_text_chunks
+        )
     EBOOK_CONVERTER_AVAILABLE = True
 except ImportError:
     EBOOK_CONVERTER_AVAILABLE = False
@@ -63,23 +152,113 @@ except ImportError:
 
 # Audio processing imports
 try:
-    from scipy.signal import butter, filtfilt, hilbert
-    from scipy.fft import fft, ifft, fftfreq
-    import librosa
-    import soundfile as sf
-    import base64
-    from pydub import AudioSegment
+    with suppress_specific_warnings():
+        from scipy.signal import butter, filtfilt, hilbert
+        from scipy.fft import fft, ifft, fftfreq
+        import librosa
+        import soundfile as sf
+        import base64
+        from pydub import AudioSegment
     AUDIO_PROCESSING_AVAILABLE = True
     
     # Configure FFmpeg from virtual environment
     try:
-        import ffmpeg_env_config
+        with suppress_specific_warnings():
+            import ffmpeg_env_config
     except ImportError:
         print("⚠️ FFmpeg env config not available")
         
 except ImportError:
     AUDIO_PROCESSING_AVAILABLE = False
     print("⚠️ Advanced audio processing libraries not available. Some features will be disabled.")
+
+# IndexTTS Model Management Functions
+def check_indextts_models():
+    """Check if IndexTTS models are available"""
+    model_dir = Path("indextts/checkpoints")
+    required_files = ["config.yaml", "gpt.pth", "bigvgan_generator.pth", "bpe.model"]
+    
+    if not model_dir.exists():
+        return False
+    
+    for filename in required_files:
+        if not (model_dir / filename).exists():
+            return False
+    
+    return True
+
+def download_indextts_models_auto():
+    """Automatically download IndexTTS models if missing"""
+    try:
+        from huggingface_hub import hf_hub_download
+        import requests
+    except ImportError:
+        print("⚠️  Cannot auto-download IndexTTS models - missing huggingface_hub")
+        print("   Install with: pip install huggingface_hub requests")
+        return False
+    
+    repo_id = "IndexTeam/IndexTTS-1.5"
+    model_dir = Path("indextts/checkpoints")
+    
+    # Create directory if it doesn't exist
+    model_dir.mkdir(parents=True, exist_ok=True)
+    
+    required_files = ["config.yaml", "gpt.pth", "bigvgan_generator.pth", "bpe.model"]
+    
+    print("🎯 Auto-downloading IndexTTS models...")
+    print("   This may take a few minutes on first run...")
+    
+    for filename in required_files:
+        file_path = model_dir / filename
+        
+        if file_path.exists():
+            continue
+            
+        try:
+            print(f"   ⬇️  Downloading {filename}...")
+            
+            hf_hub_download(
+                repo_id=repo_id,
+                filename=filename,
+                local_dir=str(model_dir),
+                local_dir_use_symlinks=False
+            )
+            
+            print(f"   ✅ {filename} downloaded")
+            
+        except Exception as e:
+            print(f"   ❌ Failed to download {filename}: {e}")
+            return False
+    
+    print("🎉 IndexTTS models ready!")
+    return True
+
+# Import IndexTTS
+INDEXTTS_AVAILABLE = False
+INDEXTTS_MODELS_AVAILABLE = False
+
+try:
+    with suppress_specific_warnings():
+        from indextts.indextts.infer import IndexTTS
+    INDEXTTS_AVAILABLE = True
+    
+    # Check if models are available
+    with suppress_specific_warnings():
+        if check_indextts_models():
+            INDEXTTS_MODELS_AVAILABLE = True
+            print("✅ IndexTTS loaded with models ready")
+        else:
+            print("🎯 IndexTTS available but models missing - attempting auto-download...")
+            if download_indextts_models_auto():
+                INDEXTTS_MODELS_AVAILABLE = True
+                print("✅ IndexTTS models downloaded and ready")
+            else:
+                print("⚠️  IndexTTS available but models not downloaded")
+                print("   Run: python tools/download_indextts_models.py")
+            
+except ImportError:
+    INDEXTTS_AVAILABLE = False
+    print("⚠️  IndexTTS not available - indextts package not found")
 
 # ===== CONVERSATION MODE FUNCTIONS =====
 def parse_conversation_script(script_text):
@@ -233,13 +412,13 @@ def generate_conversation_audio_simple(
                         skip_file_saving=True
                     )
                 elif selected_engine == 'kokoro' or selected_engine == 'Kokoro TTS':
-                    result = generate_kokoro_tts(
+                    print(f"🗣️ Using Kokoro TTS for speaker '{speaker}'")
+                    result = generate_kokoro_conversation_tts(
                         text,
-                        'af_heart',  # default voice
-                        1.0,         # speed
+                        speaker,
+                        speakers,
                         effects_settings,
-                        audio_format,
-                        skip_file_saving=True
+                        audio_format
                     )
                 elif selected_engine == 'Fish Speech':
                     print(f"🐟 Using Fish Speech for {speaker}")
@@ -249,6 +428,17 @@ def generate_conversation_audio_simple(
                         ref_audio,
                         effects_settings,
                         audio_format
+                    )
+                elif selected_engine == 'IndexTTS':
+                    print(f"🎯 Using IndexTTS for {speaker}")
+                    result = generate_indextts_tts(
+                        text,
+                        ref_audio,
+                        0.8,  # temperature
+                        None, # seed
+                        effects_settings,
+                        audio_format,
+                        skip_file_saving=True
                     )
                 else:
                     return None, f"❌ Unsupported TTS engine: {selected_engine}"
@@ -288,31 +478,92 @@ def generate_conversation_audio_simple(
         conversation_pause_samples = int(sample_rate * conversation_pause_duration)
         transition_pause_samples = int(sample_rate * speaker_transition_pause)
         
-        final_audio_parts = []
-        
-        for i, (audio_chunk, info) in enumerate(zip(conversation_audio_chunks, conversation_info)):
-            current_speaker = info['speaker']
+        # Handle negative pauses (overlapping audio)
+        if conversation_pause_samples < 0 or transition_pause_samples < 0:
+            print("🔄 Using overlapping audio mode for negative pauses...")
             
-            # Add audio chunk
-            final_audio_parts.append(audio_chunk)
+            # For negative pauses, we'll need to overlap the audio chunks
+            final_conversation_audio = None
+            current_position = 0
             
-            # Add pause after each line (except the last one)
-            if i < len(conversation_audio_chunks) - 1:
-                next_speaker = conversation_info[i + 1]['speaker']
+            for i, (audio_chunk, info) in enumerate(zip(conversation_audio_chunks, conversation_info)):
+                current_speaker = info['speaker']
                 
-                # Different pause duration based on speaker change
-                if current_speaker != next_speaker:
-                    # Speaker transition - longer pause
-                    pause_samples = conversation_pause_samples
+                if final_conversation_audio is None:
+                    # First chunk - initialize the final audio
+                    final_conversation_audio = audio_chunk.copy()
+                    current_position = len(audio_chunk)
                 else:
-                    # Same speaker continuing - shorter pause
-                    pause_samples = transition_pause_samples
+                    # Determine pause/overlap based on speaker change
+                    if i < len(conversation_audio_chunks):
+                        prev_speaker = conversation_info[i - 1]['speaker']
+                        
+                        if current_speaker != prev_speaker:
+                            pause_samples = conversation_pause_samples
+                        else:
+                            pause_samples = transition_pause_samples
+                        
+                        # Calculate where to place this chunk
+                        start_position = current_position + pause_samples
+                        
+                        if pause_samples < 0:
+                            # Negative pause means overlap
+                            overlap_samples = abs(pause_samples)
+                            start_position = max(0, current_position - overlap_samples)
+                        
+                        # Extend final audio if needed
+                        end_position = start_position + len(audio_chunk)
+                        if end_position > len(final_conversation_audio):
+                            extension = np.zeros(end_position - len(final_conversation_audio))
+                            final_conversation_audio = np.concatenate([final_conversation_audio, extension])
+                        
+                        # Mix overlapping audio (average to prevent clipping)
+                        if pause_samples < 0:
+                            # For overlap region, mix the audio
+                            overlap_end = min(start_position + len(audio_chunk), current_position)
+                            if overlap_end > start_position:
+                                overlap_length = overlap_end - start_position
+                                final_conversation_audio[start_position:overlap_end] = (
+                                    final_conversation_audio[start_position:overlap_end] * 0.5 + 
+                                    audio_chunk[:overlap_length] * 0.5
+                                )
+                                # Add the non-overlapping part
+                                if overlap_length < len(audio_chunk):
+                                    final_conversation_audio[overlap_end:end_position] = audio_chunk[overlap_length:]
+                            else:
+                                final_conversation_audio[start_position:end_position] = audio_chunk
+                        else:
+                            # Normal placement with positive pause
+                            final_conversation_audio[start_position:end_position] = audio_chunk
+                        
+                        current_position = end_position
+        else:
+            # Original code for positive pauses only
+            final_audio_parts = []
+            
+            for i, (audio_chunk, info) in enumerate(zip(conversation_audio_chunks, conversation_info)):
+                current_speaker = info['speaker']
                 
-                pause_audio = np.zeros(pause_samples)
-                final_audio_parts.append(pause_audio)
-        
-        # Concatenate all parts
-        final_conversation_audio = np.concatenate(final_audio_parts)
+                # Add audio chunk
+                final_audio_parts.append(audio_chunk)
+                
+                # Add pause after each line (except the last one)
+                if i < len(conversation_audio_chunks) - 1:
+                    next_speaker = conversation_info[i + 1]['speaker']
+                    
+                    # Different pause duration based on speaker change
+                    if current_speaker != next_speaker:
+                        # Speaker transition - longer pause
+                        pause_samples = conversation_pause_samples
+                    else:
+                        # Same speaker continuing - shorter pause
+                        pause_samples = transition_pause_samples
+                    
+                    pause_audio = np.zeros(pause_samples)
+                    final_audio_parts.append(pause_audio)
+            
+            # Concatenate all parts
+            final_conversation_audio = np.concatenate(final_audio_parts)
         
         # Save the conversation audio to outputs folder
         try:
@@ -348,6 +599,259 @@ def generate_conversation_audio_simple(
         import traceback
         traceback.print_exc()
         return None, f"❌ Conversation generation error: {str(e)}"
+
+def generate_conversation_audio_kokoro(
+    conversation_script,
+    kokoro_voices,  # List of selected Kokoro voices for each speaker
+    selected_engine="Kokoro TTS",
+    conversation_pause_duration=0.8,
+    speaker_transition_pause=0.3,
+    effects_settings=None,
+    audio_format="wav"
+):
+    """Generate a complete conversation with Kokoro TTS using selected voices for each speaker."""
+    try:
+        print("🎭 Starting Kokoro conversation generation...")
+        
+        # Parse the conversation script
+        conversation, parse_error = parse_conversation_script(conversation_script)
+        if parse_error:
+            return None, f"❌ Script parsing error: {parse_error}"
+        
+        if not conversation:
+            return None, "❌ No valid conversation found in script"
+        
+        print(f"📝 Parsed {len(conversation)} conversation lines")
+        
+        # Get unique speakers and map them to selected Kokoro voices
+        speakers = get_speaker_names_from_script(conversation_script)
+        print(f"🎤 Found speakers: {speakers}")
+        
+        # Map speakers to selected Kokoro voices
+        speaker_voice_map = {}
+        for i, speaker in enumerate(speakers):
+            if i < len(kokoro_voices) and kokoro_voices[i] is not None:
+                speaker_voice_map[speaker] = kokoro_voices[i]
+                print(f"🗣️ {speaker} -> {kokoro_voices[i]}")
+            else:
+                # Fallback to default voices if not enough selections
+                default_voices = ['af_heart', 'am_adam', 'bf_emma', 'bm_lewis', 'af_sarah', 'am_michael']
+                fallback_voice = default_voices[i % len(default_voices)]
+                speaker_voice_map[speaker] = fallback_voice
+                print(f"🗣️ {speaker} -> {fallback_voice} (fallback)")
+        
+        conversation_audio_chunks = []
+        conversation_info = []
+        sample_rate = None
+        
+        # Generate audio for each conversation line
+        for i, line in enumerate(conversation):
+            speaker = line['speaker']
+            text = line['text']
+            
+            print(f"🗣️ Generating line {i+1}/{len(conversation)}: {speaker} - \"{text[:30]}...\"")
+            
+            selected_voice = speaker_voice_map.get(speaker)
+            
+            # Generate audio using Kokoro TTS with selected voice
+            try:
+                result = generate_kokoro_tts(
+                    text,
+                    selected_voice,
+                    1.0,  # speed
+                    effects_settings,
+                    audio_format,
+                    skip_file_saving=True
+                )
+                
+                if result[0] is None:
+                    return None, f"❌ Error generating audio for {speaker}: {result[1]}"
+                
+                audio_data, info_text = result
+                if audio_data is None:
+                    return None, f"❌ No audio generated for {speaker}"
+                
+                # Extract audio array from tuple
+                if isinstance(audio_data, tuple):
+                    sample_rate, line_audio = audio_data
+                else:
+                    return None, f"❌ Invalid audio format for {speaker}"
+                
+                conversation_audio_chunks.append(line_audio)
+                conversation_info.append({
+                    'speaker': speaker,
+                    'text': text[:50] + ('...' if len(text) > 50 else ''),
+                    'duration': len(line_audio) / sample_rate,
+                    'samples': len(line_audio),
+                    'voice': selected_voice
+                })
+                
+                print(f"✅ Generated {len(line_audio)} samples for {speaker} using voice {selected_voice}")
+                
+            except Exception as gen_error:
+                import traceback
+                traceback.print_exc()
+                return None, f"❌ Error generating audio for {speaker}: {str(gen_error)}"
+        
+        # Combine all audio with proper timing
+        print("🎵 Combining conversation audio with proper timing...")
+        
+        # Calculate pause durations in samples
+        conversation_pause_samples = int(sample_rate * conversation_pause_duration)
+        transition_pause_samples = int(sample_rate * speaker_transition_pause)
+        
+        # Handle negative pauses (overlapping audio)
+        if conversation_pause_samples < 0 or transition_pause_samples < 0:
+            print("🔄 Using overlapping audio mode for negative pauses...")
+            
+            # For negative pauses, we'll need to overlap the audio chunks
+            final_conversation_audio = None
+            current_position = 0
+            
+            for i, (audio_chunk, info) in enumerate(zip(conversation_audio_chunks, conversation_info)):
+                current_speaker = info['speaker']
+                
+                if final_conversation_audio is None:
+                    # First chunk - initialize the final audio
+                    final_conversation_audio = audio_chunk.copy()
+                    current_position = len(audio_chunk)
+                else:
+                    # Determine pause/overlap based on speaker change
+                    if i < len(conversation_audio_chunks):
+                        prev_speaker = conversation_info[i - 1]['speaker']
+                        
+                        if current_speaker != prev_speaker:
+                            pause_samples = conversation_pause_samples
+                        else:
+                            pause_samples = transition_pause_samples
+                        
+                        # Calculate where to place this chunk
+                        start_position = current_position + pause_samples
+                        
+                        if pause_samples < 0:
+                            # Negative pause means overlap
+                            overlap_samples = abs(pause_samples)
+                            start_position = max(0, current_position - overlap_samples)
+                        
+                        # Extend final audio if needed
+                        end_position = start_position + len(audio_chunk)
+                        if end_position > len(final_conversation_audio):
+                            extension = np.zeros(end_position - len(final_conversation_audio))
+                            final_conversation_audio = np.concatenate([final_conversation_audio, extension])
+                        
+                        # Mix overlapping audio (average to prevent clipping)
+                        if pause_samples < 0:
+                            # For overlap region, mix the audio
+                            overlap_end = min(start_position + len(audio_chunk), current_position)
+                            if overlap_end > start_position:
+                                overlap_length = overlap_end - start_position
+                                final_conversation_audio[start_position:overlap_end] = (
+                                    final_conversation_audio[start_position:overlap_end] * 0.5 + 
+                                    audio_chunk[:overlap_length] * 0.5
+                                )
+                                # Add the non-overlapping part
+                                if overlap_length < len(audio_chunk):
+                                    final_conversation_audio[overlap_end:end_position] = audio_chunk[overlap_length:]
+                            else:
+                                final_conversation_audio[start_position:end_position] = audio_chunk
+                        else:
+                            # Normal placement with positive pause
+                            final_conversation_audio[start_position:end_position] = audio_chunk
+                        
+                        current_position = end_position
+        else:
+            # Original code for positive pauses only
+            final_audio_parts = []
+            
+            for i, (audio_chunk, info) in enumerate(zip(conversation_audio_chunks, conversation_info)):
+                current_speaker = info['speaker']
+                
+                # Add audio chunk
+                final_audio_parts.append(audio_chunk)
+                
+                # Add pause after each line (except the last one)
+                if i < len(conversation_audio_chunks) - 1:
+                    next_speaker = conversation_info[i + 1]['speaker']
+                    
+                    # Different pause duration based on speaker change
+                    if current_speaker != next_speaker:
+                        # Speaker transition - longer pause
+                        pause_samples = conversation_pause_samples
+                    else:
+                        # Same speaker continuing - shorter pause
+                        pause_samples = transition_pause_samples
+                    
+                    pause_audio = np.zeros(pause_samples)
+                    final_audio_parts.append(pause_audio)
+            
+            # Concatenate all parts
+            final_conversation_audio = np.concatenate(final_audio_parts)
+        
+        # Save the conversation audio to outputs folder
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename_base = f"conversation_kokoro_{timestamp}"
+            filepath, filename = save_audio_with_format(
+                final_conversation_audio, sample_rate, audio_format, output_folder, filename_base
+            )
+            print(f"💾 Conversation saved as: {filename}")
+        except Exception as save_error:
+            print(f"Warning: Could not save conversation file: {save_error}")
+            filename = "conversation_kokoro_audio"
+        
+        # Create conversation summary
+        total_duration = len(final_conversation_audio) / sample_rate
+        unique_speakers = len(set([info['speaker'] for info in conversation_info]))
+        
+        summary = {
+            'total_lines': len(conversation),
+            'unique_speakers': unique_speakers,
+            'total_duration': total_duration,
+            'speakers': list(set([info['speaker'] for info in conversation_info])),
+            'conversation_info': conversation_info,
+            'engine_used': selected_engine,
+            'saved_file': filename
+        }
+        
+        print(f"✅ Kokoro conversation generated: {len(conversation)} lines, {unique_speakers} speakers, {total_duration:.1f}s")
+        
+        return (sample_rate, final_conversation_audio), summary
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return None, f"❌ Kokoro conversation generation error: {str(e)}"
+
+def generate_kokoro_conversation_tts(text, speaker, speakers_list, effects_settings=None, audio_format="wav"):
+    """Generate TTS audio using Kokoro TTS with speaker-specific voice assignment for conversation mode."""
+    if not KOKORO_AVAILABLE:
+        return None, "❌ Kokoro TTS not available - check installation"
+    
+    if not MODEL_STATUS['kokoro']['loaded'] or not KOKORO_PIPELINES:
+        return None, "❌ Kokoro TTS not loaded - please load the model first"
+    
+    try:
+        # Voice assignment logic for conversation mode
+        available_voices = ['af_heart', 'am_adam', 'bf_emma', 'bm_lewis', 'af_sarah', 'am_michael']
+        speaker_index = speakers_list.index(speaker) if speaker in speakers_list else 0
+        assigned_voice = available_voices[speaker_index % len(available_voices)]
+        
+        print(f"🗣️ Generating Kokoro TTS for speaker '{speaker}' using voice '{assigned_voice}'")
+        
+        # Generate using the assigned voice
+        result = generate_kokoro_tts(
+            text,
+            assigned_voice,
+            1.0,  # speed
+            effects_settings,
+            audio_format,
+            skip_file_saving=True
+        )
+        
+        return result
+        
+    except Exception as e:
+        return None, f"❌ Kokoro conversation error: {str(e)}"
 
 def generate_fish_speech_simple(text, ref_audio=None, effects_settings=None, audio_format="wav"):
     """Simplified Fish Speech generation for conversation mode."""
@@ -523,7 +1027,8 @@ def save_audio_with_format(audio_data, sample_rate, output_format="wav", output_
         raise ValueError(f"Unsupported audio format: {output_format}. Supported formats: wav, mp3")
 
 # ===== GLOBAL CONFIGURATION =====
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+with suppress_specific_warnings():
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"🚀 Running on device: {DEVICE}")
 
 # Cache configuration for Kokoro
@@ -559,13 +1064,15 @@ CHATTERBOX_MODEL = None
 KOKORO_PIPELINES = {}
 FISH_SPEECH_ENGINE = None
 FISH_SPEECH_LLAMA_QUEUE = None
+INDEXTTS_MODEL = None
 loaded_voices = {}
 
 # Model loading status
 MODEL_STATUS = {
     'chatterbox': {'loaded': False, 'loading': False},
     'kokoro': {'loaded': False, 'loading': False},
-    'fish_speech': {'loaded': False, 'loading': False}
+    'fish_speech': {'loaded': False, 'loading': False},
+    'indextts': {'loaded': False, 'loading': False}
 }
 
 def init_chatterbox():
@@ -583,7 +1090,8 @@ def init_chatterbox():
     try:
         MODEL_STATUS['chatterbox']['loading'] = True
         print("🔄 Loading ChatterboxTTS...")
-        CHATTERBOX_MODEL = ChatterboxTTS.from_pretrained(DEVICE)
+        with suppress_specific_warnings():
+            CHATTERBOX_MODEL = ChatterboxTTS.from_pretrained(DEVICE)
         MODEL_STATUS['chatterbox']['loaded'] = True
         MODEL_STATUS['chatterbox']['loading'] = False
         print("✅ ChatterboxTTS loaded successfully")
@@ -639,7 +1147,8 @@ def init_kokoro():
             os.environ.pop("HF_HUB_OFFLINE", None)
         
         # Load pipelines only (no need for separate KModel)
-        KOKORO_PIPELINES = {lang_code: KPipeline(repo_id="hexgrad/Kokoro-82M", lang_code=lang_code) for lang_code in 'abpi'}
+        with suppress_specific_warnings():
+            KOKORO_PIPELINES = {lang_code: KPipeline(repo_id="hexgrad/Kokoro-82M", lang_code=lang_code) for lang_code in 'abpi'}
         
         # Configure lexicons
         KOKORO_PIPELINES['a'].g2p.lexicon.golds['kokoro'] = 'kˈOkəɹO'
@@ -718,27 +1227,28 @@ def init_fish_speech():
         
         # Initialize LLAMA queue for text2semantic processing
         precision = torch.half if DEVICE == "cuda" else torch.bfloat16
-        FISH_SPEECH_LLAMA_QUEUE = launch_thread_safe_queue(
-            checkpoint_path=checkpoint_path,
-            device=DEVICE,
-            precision=precision,
-            compile=False  # Can be enabled for faster inference
-        )
-        
-        # Load decoder model
-        decoder_model = load_decoder_model(
-            config_name="modded_dac_vq",
-            checkpoint_path=os.path.join(checkpoint_path, "codec.pth"),
-            device=DEVICE
-        )
-        
-        # Initialize TTS inference engine
-        FISH_SPEECH_ENGINE = TTSInferenceEngine(
-            llama_queue=FISH_SPEECH_LLAMA_QUEUE,
-            decoder_model=decoder_model,
-            precision=precision,
-            compile=False
-        )
+        with suppress_specific_warnings():
+            FISH_SPEECH_LLAMA_QUEUE = launch_thread_safe_queue(
+                checkpoint_path=checkpoint_path,
+                device=DEVICE,
+                precision=precision,
+                compile=False  # Can be enabled for faster inference
+            )
+            
+            # Load decoder model
+            decoder_model = load_decoder_model(
+                config_name="modded_dac_vq",
+                checkpoint_path=os.path.join(checkpoint_path, "codec.pth"),
+                device=DEVICE
+            )
+            
+            # Initialize TTS inference engine
+            FISH_SPEECH_ENGINE = TTSInferenceEngine(
+                llama_queue=FISH_SPEECH_LLAMA_QUEUE,
+                decoder_model=decoder_model,
+                precision=precision,
+                compile=False
+            )
         
         MODEL_STATUS['fish_speech']['loaded'] = True
         MODEL_STATUS['fish_speech']['loading'] = False
@@ -774,6 +1284,87 @@ def unload_fish_speech():
         return "✅ Fish Speech unloaded - memory freed"
     except Exception as e:
         error_msg = f"❌ Error unloading Fish Speech: {e}"
+        print(error_msg)
+        return error_msg
+
+def init_indextts():
+    """Initialize IndexTTS model."""
+    global INDEXTTS_MODEL, MODEL_STATUS, INDEXTTS_MODELS_AVAILABLE
+    if not INDEXTTS_AVAILABLE:
+        return False, "❌ IndexTTS not available - check installation"
+    
+    if MODEL_STATUS['indextts']['loaded']:
+        return True, "✅ IndexTTS already loaded"
+    
+    if MODEL_STATUS['indextts']['loading']:
+        return False, "⏳ IndexTTS is currently loading..."
+    
+    try:
+        MODEL_STATUS['indextts']['loading'] = True
+        print("🔄 Loading IndexTTS...")
+        
+        # Check if models are available, try to download if not
+        if not INDEXTTS_MODELS_AVAILABLE:
+            print("🎯 IndexTTS models not found - attempting download...")
+            if download_indextts_models_auto():
+                INDEXTTS_MODELS_AVAILABLE = True
+                print("✅ IndexTTS models downloaded successfully")
+            else:
+                MODEL_STATUS['indextts']['loading'] = False
+                error_msg = "❌ IndexTTS models not available and download failed.\nRun: python tools/download_indextts_models.py"
+                print(error_msg)
+                return False, error_msg
+        
+        # Check for model checkpoints
+        checkpoint_path = "indextts/checkpoints"
+        config_path = os.path.join(checkpoint_path, "config.yaml")
+        
+        if not os.path.exists(config_path):
+            MODEL_STATUS['indextts']['loading'] = False
+            error_msg = "❌ IndexTTS config not found after download attempt."
+            print(error_msg)
+            return False, error_msg
+        
+        # Initialize IndexTTS model
+        with suppress_specific_warnings():
+            INDEXTTS_MODEL = IndexTTS(
+                cfg_path=config_path,
+                model_dir=checkpoint_path,
+                is_fp16=DEVICE == "cuda",
+                device=DEVICE,
+                use_cuda_kernel=False  # Disable to avoid compilation issues
+            )
+        
+        MODEL_STATUS['indextts']['loaded'] = True
+        MODEL_STATUS['indextts']['loading'] = False
+        print("✅ IndexTTS loaded successfully")
+        return True, "✅ IndexTTS loaded successfully"
+        
+    except Exception as e:
+        MODEL_STATUS['indextts']['loading'] = False
+        error_msg = f"❌ Failed to load IndexTTS: {e}"
+        print(error_msg)
+        return False, error_msg
+
+def unload_indextts():
+    """Unload IndexTTS model to free memory."""
+    global INDEXTTS_MODEL, MODEL_STATUS
+    try:
+        if INDEXTTS_MODEL is not None:
+            del INDEXTTS_MODEL
+            INDEXTTS_MODEL = None
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
+        if DEVICE == "cuda":
+            torch.cuda.empty_cache()
+        
+        MODEL_STATUS['indextts']['loaded'] = False
+        print("✅ IndexTTS unloaded successfully")
+        return "✅ IndexTTS unloaded - memory freed"
+    except Exception as e:
+        error_msg = f"❌ Error unloading IndexTTS: {e}"
         print(error_msg)
         return error_msg
 
@@ -938,6 +1529,20 @@ def get_model_status():
             status_text += "🐟 **Fish Speech:** ⭕ Not loaded\n"
     else:
         status_text += "🐟 **Fish Speech:** ❌ Not available\n"
+    
+    # IndexTTS status
+    if INDEXTTS_AVAILABLE:
+        if MODEL_STATUS['indextts']['loading']:
+            status_text += "🎯 **IndexTTS:** ⏳ Loading...\n"
+        elif MODEL_STATUS['indextts']['loaded']:
+            status_text += "🎯 **IndexTTS:** ✅ Loaded\n"
+        else:
+            if INDEXTTS_MODELS_AVAILABLE:
+                status_text += "🎯 **IndexTTS:** ⭕ Not loaded (Models ready)\n"
+            else:
+                status_text += "🎯 **IndexTTS:** ⭕ Not loaded (Models will auto-download)\n"
+    else:
+        status_text += "🎯 **IndexTTS:** ❌ Not available\n"
     
     return status_text
 
@@ -1240,10 +1845,22 @@ def generate_chatterbox_tts(
         text_chunks = split_text_into_chunks(text_input, max_chunk_length=chunk_size_input)
         audio_chunks = []
         
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        # Generate audio chunks with progress information
+        print(f"🎙️ Generating ChatterboxTTS audio for {len(text_chunks)} chunk(s)...")
+        if len(text_chunks) == 1:
+            print("📊 Progress information will appear below during generation...")
+        
+        for i, chunk in enumerate(text_chunks):
+            if len(text_chunks) > 1:
+                print(f"📝 Processing chunk {i+1}/{len(text_chunks)}: {chunk[:50]}...")
             
-            for chunk in text_chunks:
+            # Only suppress specific warnings, not all output (to allow tqdm progress bars)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                warnings.filterwarnings("ignore", category=FutureWarning)
+                warnings.filterwarnings("ignore", category=DeprecationWarning)
+                warnings.filterwarnings("ignore", category=RuntimeWarning)
+                
                 wav = CHATTERBOX_MODEL.generate(
                     chunk,
                     audio_prompt_path=audio_prompt_path_input,
@@ -1252,6 +1869,9 @@ def generate_chatterbox_tts(
                     cfg_weight=cfgw_input,
                 )
                 audio_chunks.append(wav.squeeze(0).numpy())
+            
+            if len(text_chunks) > 1:
+                print(f"✅ Chunk {i+1}/{len(text_chunks)} completed")
         
         # Concatenate chunks
         if len(audio_chunks) == 1:
@@ -1702,9 +2322,23 @@ def upload_and_refresh(files, voice_name):
     if "successfully" in result:
         updated_choices = update_kokoro_voice_choices()
         new_choices = [(k, v) for k, v in updated_choices.items()]
-        return result, get_custom_voice_list(), "", None, gr.update(choices=new_choices)
+        # Return updates for main voice selector and all 5 conversation mode voice selectors
+        return (result, get_custom_voice_list(), "", None, 
+                gr.update(choices=new_choices),  # Main kokoro_voice
+                gr.update(choices=new_choices),  # speaker_1_kokoro_voice
+                gr.update(choices=new_choices),  # speaker_2_kokoro_voice
+                gr.update(choices=new_choices),  # speaker_3_kokoro_voice
+                gr.update(choices=new_choices),  # speaker_4_kokoro_voice
+                gr.update(choices=new_choices))  # speaker_5_kokoro_voice
     else:
-        return result, get_custom_voice_list(), voice_name, files, gr.update()
+        # Return no updates for voice selectors on error
+        return (result, get_custom_voice_list(), voice_name, files, 
+                gr.update(),  # Main kokoro_voice
+                gr.update(),  # speaker_1_kokoro_voice
+                gr.update(),  # speaker_2_kokoro_voice
+                gr.update(),  # speaker_3_kokoro_voice
+                gr.update(),  # speaker_4_kokoro_voice
+                gr.update())  # speaker_5_kokoro_voice
 
 def get_custom_voice_list():
     """Get the list of custom voices for the dataframe."""
@@ -1754,6 +2388,16 @@ def refresh_kokoro_voice_list():
     updated_choices = update_kokoro_voice_choices()
     new_choices = [(k, v) for k, v in updated_choices.items()]
     return gr.update(choices=new_choices)
+
+def refresh_all_kokoro_voices():
+    """Refresh all Kokoro voice selectors including conversation mode."""
+    # Load any manually added custom voices first
+    load_manual_custom_voices()
+    
+    updated_choices = update_kokoro_voice_choices()
+    new_choices = [(k, v) for k, v in updated_choices.items()]
+    # Return 5 identical updates for the 5 conversation mode voice selectors
+    return [gr.update(choices=new_choices) for _ in range(5)]
 
 def update_kokoro_voice_choices():
     """Update choices with custom voices."""
@@ -1906,6 +2550,136 @@ def generate_kokoro_tts(text, voice='af_heart', speed=1, effects_settings=None, 
     except Exception as e:
         return None, f"❌ Kokoro error: {str(e)}"
 
+
+def generate_indextts_tts(
+    text_input: str,
+    indextts_ref_audio: str = None,
+    indextts_temperature: float = 0.8,
+    indextts_seed: int = None,
+    effects_settings=None,
+    audio_format: str = "wav",
+    skip_file_saving: bool = False
+):
+    """Generate speech using IndexTTS model."""
+    
+    if not INDEXTTS_AVAILABLE:
+        return None, "❌ IndexTTS not available - check installation"
+    
+    if not MODEL_STATUS['indextts']['loaded'] or INDEXTTS_MODEL is None:
+        return None, "❌ IndexTTS model not loaded. Please load the model first."
+    
+    if not text_input.strip():
+        return None, "❌ Please enter text to synthesize"
+    
+    # Use sample audio as fallback if no reference audio provided
+    if not indextts_ref_audio or not os.path.exists(indextts_ref_audio):
+        sample_audio_path = os.path.join("sample", "Sample.wav")
+        if os.path.exists(sample_audio_path):
+            indextts_ref_audio = sample_audio_path
+            print(f"🎯 Using default sample audio: {sample_audio_path}")
+        else:
+            return None, "❌ Please provide a valid reference audio file or ensure sample/Sample.wav exists"
+    
+    try:
+        # Set seed for reproducibility
+        if indextts_seed is not None and indextts_seed != 0:
+            set_seed(indextts_seed)
+        
+        # Prepare temporary output file
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+            temp_output_path = temp_file.name
+        
+        # Set generation parameters (IndexTTS uses different parameter names)
+        generation_kwargs = {
+            'max_text_tokens_per_sentence': 120,
+        }
+        
+        # Generate speech using IndexTTS
+        print(f"🎯 Generating speech with IndexTTS...")
+        print(f"   📝 Text: {text_input.strip()[:100]}...")
+        print(f"   🎵 Reference audio: {indextts_ref_audio}")
+        print(f"   📁 Output path: {temp_output_path}")
+        
+        # Add timeout to prevent hanging (cross-platform)
+        import threading
+        import time
+        
+        generation_result = [None]  # Use list to store result from thread
+        generation_error = [None]
+        
+        def generate_audio():
+            try:
+                with suppress_specific_warnings():
+                    INDEXTTS_MODEL.infer(
+                        audio_prompt=indextts_ref_audio,
+                        text=text_input.strip(),
+                        output_path=temp_output_path,
+                        **generation_kwargs
+                    )
+                generation_result[0] = "success"
+            except Exception as e:
+                generation_error[0] = str(e)
+        
+        # Start generation in a separate thread
+        thread = threading.Thread(target=generate_audio)
+        thread.daemon = True
+        thread.start()
+        
+        # Wait for completion with timeout
+        thread.join(timeout=120)  # 2 minute timeout
+        
+        if thread.is_alive():
+            return None, "❌ IndexTTS generation timed out after 2 minutes. The model may be stuck."
+        
+        if generation_error[0]:
+            return None, f"❌ IndexTTS generation failed: {generation_error[0]}"
+        
+        if generation_result[0] != "success":
+            return None, "❌ IndexTTS generation failed for unknown reason"
+        
+        print(f"✅ IndexTTS generation completed")
+        
+        # Load the generated audio
+        if os.path.exists(temp_output_path):
+            sample_rate, audio_data = wavfile.read(temp_output_path)
+            
+            # Clean up temporary file
+            os.unlink(temp_output_path)
+            
+            # Convert to float32 for processing
+            if audio_data.dtype == np.int16:
+                audio_data = audio_data.astype(np.float32) / 32768.0
+            elif audio_data.dtype == np.int32:
+                audio_data = audio_data.astype(np.float32) / 2147483648.0
+            
+            # Apply audio effects if specified
+            if effects_settings:
+                audio_data = apply_audio_effects(audio_data, sample_rate, effects_settings)
+            
+            # Normalize audio
+            audio_data = normalize_audio(audio_data)
+            
+            # Save file if not skipping
+            if not skip_file_saving:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename_base = f"indextts_output_{timestamp}"
+                output_folder = "outputs"
+                
+                file_path, status_message = save_audio_with_format(
+                    audio_data, sample_rate, audio_format, output_folder, filename_base
+                )
+            else:
+                status_message = "✅ IndexTTS synthesis completed"
+            
+            return (sample_rate, audio_data), status_message
+        else:
+            return None, "❌ Failed to generate audio - output file not created"
+            
+    except Exception as e:
+        error_msg = f"❌ IndexTTS generation failed: {str(e)}"
+        print(error_msg)
+        return None, error_msg
+
 # ===== VOICE PRESET FUNCTIONS =====
 def load_voice_presets():
     """Load voice presets from JSON file."""
@@ -1998,6 +2772,10 @@ def convert_ebook_to_audiobook(
     fish_repetition_penalty: float = 1.1,
     fish_max_tokens: int = 1024,
     fish_seed: int = None,
+    # IndexTTS parameters
+    indextts_ref_audio: str = None,
+    indextts_temperature: float = 0.8,
+    indextts_seed: int = None,
     # Effects parameters
     gain_db: float = 0,
     enable_eq: bool = False,
@@ -2080,6 +2858,11 @@ def convert_ebook_to_audiobook(
                 audio_result, status = generate_fish_speech_tts(
                     chunk['content'], fish_ref_audio, fish_ref_text, fish_temperature, fish_top_p,
                     fish_repetition_penalty, fish_max_tokens, fish_seed, effects_settings, "wav", skip_file_saving=True  # Skip saving individual chunks
+                )
+            elif tts_engine == "IndexTTS":
+                audio_result, status = generate_indextts_tts(
+                    chunk['content'], indextts_ref_audio, indextts_temperature,
+                    indextts_seed, effects_settings, "wav", skip_file_saving=True  # Skip saving individual chunks
                 )
             else:
                 return None, f"❌ Invalid TTS engine: {tts_engine}"
@@ -2227,6 +3010,10 @@ def generate_unified_tts(
     fish_repetition_penalty: float = 1.1,
     fish_max_tokens: int = 1024,
     fish_seed: int = None,
+    # IndexTTS parameters
+    indextts_ref_audio: str = None,
+    indextts_temperature: float = 0.8,
+    indextts_seed: int = None,
     # Effects parameters
     gain_db: float = 0,
     enable_eq: bool = False,
@@ -2280,6 +3067,11 @@ def generate_unified_tts(
         return generate_fish_speech_tts(
             text_input, fish_ref_audio, fish_ref_text, fish_temperature, fish_top_p,
             fish_repetition_penalty, fish_max_tokens, fish_seed, effects_settings, audio_format
+        )
+    elif tts_engine == "IndexTTS":
+        return generate_indextts_tts(
+            text_input, indextts_ref_audio, indextts_temperature, indextts_seed,
+            effects_settings, audio_format
         )
     else:
         return None, "❌ Invalid TTS engine selected"
@@ -2814,6 +3606,21 @@ def create_gradio_interface():
             border: 1px solid var(--border-color) !important;
         }
         
+        /* Conversation Mode Voice Grid - More compact */
+        .conversation-voice-grid .voice-grid {
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
+            gap: 8px !important;
+            max-height: 300px !important;
+            padding: 8px !important;
+        }
+        
+        /* Make conversation voice labels smaller */
+        .conversation-voice-grid .voice-grid label {
+            font-size: 0.8em !important;
+            padding: 6px 10px !important;
+            min-height: 35px !important;
+        }
+        
         .voice-grid .gr-radio {
             display: contents !important;
         }
@@ -3319,7 +4126,7 @@ def create_gradio_interface():
             ✨ ULTIMATE TTS STUDIO PRO ✨
             </div>
             <div class="subtitle">
-            🎭 ChatterboxTTS + Kokoro TTS + Fish Speech | SUP3R EDITION 🚀<br/>
+            🎭 ChatterboxTTS + Kokoro TTS + Fish Speech + IndexTTS | SUP3R EDITION 🚀<br/>
             <strong>Advanced Text-to-Speech with Multiple Engines, Voice Presets, Audio Effects & Export Options</strong>
             </div>
         </div>
@@ -3436,6 +4243,27 @@ def create_gradio_interface():
                 
                 # System Cleanup - Compact
                 with gr.Column():
+                    # IndexTTS Section
+                    if INDEXTTS_AVAILABLE:
+                        with gr.Row():
+                            indextts_status = gr.Markdown(
+                                "🎯 **IndexTTS:** ⭕ Not loaded",
+                                elem_classes=["model-status"]
+                            )
+                        with gr.Row():
+                            load_indextts_btn = gr.Button(
+                                "🚀 Load IndexTTS",
+                                variant="primary",
+                                size="sm",
+                                visible=INDEXTTS_AVAILABLE
+                            )
+                            unload_indextts_btn = gr.Button(
+                                "🗑️ Unload",
+                                variant="secondary",
+                                size="sm",
+                                visible=INDEXTTS_AVAILABLE
+                            )
+                    
                     with gr.Row():
                         gr.Markdown("🧹 **System Cleanup**", elem_classes=["fade-in"])
                         cleanup_status = gr.Markdown(
@@ -3460,7 +4288,7 @@ def create_gradio_interface():
                     with gr.TabItem("📝 TEXT TO SYNTHESIZE", id="single_voice"):
                         # Text input with enhanced styling
                         text = gr.Textbox(
-                            value="Hello! This is a demonstration of the ULTIMATE TTS STUDIO. You can choose between ChatterboxTTS and Fish Speech for custom voice cloning or Kokoro TTS for high-quality pre-trained voices.",
+                            value="Hello! This is a demonstration of the ULTIMATE TTS STUDIO. You can choose between ChatterboxTTS, Fish Speech, and IndexTTS for custom voice cloning or Kokoro TTS for high-quality pre-trained voices.",
                             label="📝 Text to synthesize",
                             lines=5,
                             placeholder="Enter your text here...",
@@ -3507,15 +4335,15 @@ Alice: I went to Japan. It was absolutely incredible!""",
                                 # Timing controls
                                 with gr.Row():
                                     conversation_pause = gr.Slider(
-                                        0.05, 2.0, step=0.1, value=0.8,
+                                        -0.5, 2.0, step=0.1, value=0.8,
                                         label="🔇 Speaker Change Pause (s)",
-                                        info="Pause duration when speakers change",
+                                        info="Pause duration when speakers change (negative = overlap)",
                                         elem_classes=["fade-in"]
                                     )
                                     speaker_transition_pause = gr.Slider(
-                                        0.1, 1.0, step=0.1, value=0.3,
+                                        -0.5, 1.0, step=0.1, value=0.3,
                                         label="⏸️ Same Speaker Pause (s)",
-                                        info="Pause when same speaker continues",
+                                        info="Pause when same speaker continues (negative = overlap)",
                                         elem_classes=["fade-in"]
                                     )
                             
@@ -3545,11 +4373,12 @@ Alice: I went to Japan. It was absolutely incredible!""",
                         # Voice Samples Section for Conversation Mode
                         with gr.Group():
                             gr.Markdown("### 🎤 Voice Samples for Speakers")
-                            gr.Markdown("*Upload voice samples for each speaker (required for ChatterboxTTS and Fish Speech only)*")
+                            gr.Markdown("*Upload voice samples for each speaker (required for ChatterboxTTS, Fish Speech, and IndexTTS only)*")
                             
-                            # Dynamic voice sample uploads (up to 5 speakers)
+                            # Dynamic voice sample uploads (up to 5 speakers) and Kokoro voice selection
                             with gr.Row():
-                                with gr.Column():
+                                with gr.Column(elem_classes=["conversation-voice-grid"]):
+                                    # Voice sample uploads for non-Kokoro engines
                                     speaker_1_audio = gr.Audio(
                                         sources=["upload", "microphone"],
                                         type="filepath",
@@ -3571,8 +4400,36 @@ Alice: I went to Japan. It was absolutely incredible!""",
                                         visible=False,
                                         elem_classes=["fade-in"]
                                     )
+                                    
+                                    # Kokoro voice selection radio buttons for each speaker (in accordions)
+                                    with gr.Accordion("🗣️ Speaker 1 Kokoro Voice", open=False, visible=False, elem_classes=["fade-in"]) as speaker_1_kokoro_accordion:
+                                        speaker_1_kokoro_voice = gr.Radio(
+                                            choices=[(k, v) for k, v in update_kokoro_voice_choices().items()],
+                                            value='af_heart',
+                                            label="",
+                                            elem_classes=["voice-grid"],
+                                            show_label=False
+                                        )
+                                    
+                                    with gr.Accordion("🗣️ Speaker 2 Kokoro Voice", open=False, visible=False, elem_classes=["fade-in"]) as speaker_2_kokoro_accordion:
+                                        speaker_2_kokoro_voice = gr.Radio(
+                                            choices=[(k, v) for k, v in update_kokoro_voice_choices().items()],
+                                            value='am_adam',
+                                            label="",
+                                            elem_classes=["voice-grid"],
+                                            show_label=False
+                                        )
+                                    
+                                    with gr.Accordion("🗣️ Speaker 3 Kokoro Voice", open=False, visible=False, elem_classes=["fade-in"]) as speaker_3_kokoro_accordion:
+                                        speaker_3_kokoro_voice = gr.Radio(
+                                            choices=[(k, v) for k, v in update_kokoro_voice_choices().items()],
+                                            value='bf_emma',
+                                            label="",
+                                            elem_classes=["voice-grid"],
+                                            show_label=False
+                                        )
                                 
-                                with gr.Column():
+                                with gr.Column(elem_classes=["conversation-voice-grid"]):
                                     speaker_4_audio = gr.Audio(
                                         sources=["upload", "microphone"],
                                         type="filepath",
@@ -3587,6 +4444,25 @@ Alice: I went to Japan. It was absolutely incredible!""",
                                         visible=False,
                                         elem_classes=["fade-in"]
                                     )
+                                    
+                                    # More Kokoro voice selection radio buttons (in accordions)
+                                    with gr.Accordion("🗣️ Speaker 4 Kokoro Voice", open=False, visible=False, elem_classes=["fade-in"]) as speaker_4_kokoro_accordion:
+                                        speaker_4_kokoro_voice = gr.Radio(
+                                            choices=[(k, v) for k, v in update_kokoro_voice_choices().items()],
+                                            value='bm_lewis',
+                                            label="",
+                                            elem_classes=["voice-grid"],
+                                            show_label=False
+                                        )
+                                    
+                                    with gr.Accordion("🗣️ Speaker 5 Kokoro Voice", open=False, visible=False, elem_classes=["fade-in"]) as speaker_5_kokoro_accordion:
+                                        speaker_5_kokoro_voice = gr.Radio(
+                                            choices=[(k, v) for k, v in update_kokoro_voice_choices().items()],
+                                            value='af_sarah',
+                                            label="",
+                                            elem_classes=["voice-grid"],
+                                            show_label=False
+                                        )
                             
                             # Help text for voice samples
                             gr.Markdown("""
@@ -3596,7 +4472,8 @@ Alice: I went to Japan. It was absolutely incredible!""",
                                     • Upload clear audio samples (3-10 seconds work best)<br/>
                                     • <strong>ChatterboxTTS:</strong> Voice samples required for voice cloning ✅<br/>
                                     • <strong>Fish Speech:</strong> Voice samples help with voice matching ✅<br/>
-                                    • <strong>Kokoro TTS:</strong> ❌ Not supported in conversation mode (uses pre-trained voices only)<br/>
+                                    • <strong>IndexTTS:</strong> Voice samples required for voice cloning ✅<br/>
+                                    • <strong>Kokoro TTS:</strong> ✅ Uses pre-trained voices (no samples needed - voices auto-assigned)<br/>
                                     • Voice samples will be automatically assigned when you analyze the script
                                 </p>
                             </div>
@@ -3607,9 +4484,10 @@ Alice: I went to Japan. It was absolutely incredible!""",
                     choices=[
                         ("🎤 ChatterboxTTS - Voice Cloning", "ChatterboxTTS"),
                         ("🗣️ Kokoro TTS - Pre-trained Voices", "Kokoro TTS"),
-                        ("🐟 Fish Speech - Natural TTS", "Fish Speech")
-                    ],
-                    value="ChatterboxTTS" if CHATTERBOX_AVAILABLE else "Kokoro TTS" if KOKORO_AVAILABLE else "Fish Speech",
+                                            ("🐟 Fish Speech - Natural TTS", "Fish Speech"),
+                    ("🎯 IndexTTS - Industrial Quality", "IndexTTS")
+                ],
+                value="ChatterboxTTS" if CHATTERBOX_AVAILABLE else "Kokoro TTS" if KOKORO_AVAILABLE else "Fish Speech" if FISH_SPEECH_AVAILABLE else "IndexTTS",
                     label="🎯 Select TTS Engine",
                     info="Choose your preferred text-to-speech engine (auto-selects when you load a model)",
                     elem_classes=["fade-in"]
@@ -3903,14 +4781,45 @@ Alice: I went to Japan. It was absolutely incredible!""",
                     # Placeholder when Fish Speech is not available
                     with gr.Group():
                         gr.Markdown("<div style='text-align: center; padding: 40px; opacity: 0.5;'>**🐟 Fish Speech** - ⚠️ Not available - please check installation</div>")
+                
+                # IndexTTS Controls
+                if INDEXTTS_AVAILABLE:
+                    with gr.Group(visible=True, elem_id="indextts_controls", elem_classes=["fade-in"]):
+                        gr.Markdown("**🎯 IndexTTS - Industrial-level controllable TTS**")
+                        
+                        with gr.Row():
+                            indextts_ref_audio = gr.Audio(
+                                label="🎤 Reference Audio",
+                                type="filepath"
+                            )
+                        
+                        with gr.Accordion("🔧 Advanced IndexTTS Settings", open=False, elem_classes=["fade-in"]):
+                            gr.Markdown("<p style='opacity: 0.7; margin-bottom: 15px;'>🔧 Fine-tune IndexTTS generation parameters</p>")
+                            
+                            with gr.Row():
+                                indextts_temperature = gr.Slider(
+                                    minimum=0.1,
+                                    maximum=2.0,
+                                    value=0.8,
+                                    step=0.1,
+                                    label="🌡️ Temperature",
+                                    info="Controls randomness in generation (0.1=stable, 2.0=creative)"
+                                )
+                                indextts_seed = gr.Number(
+                                    label="🎲 Seed",
+                                    value=None,
+                                    precision=0,
+                                    info="Set seed for reproducible results (leave empty for random)"
+                                )
+                
+                # Placeholder when IndexTTS is not available
+                else:
+                    with gr.Group():
+                        gr.Markdown("<div style='text-align: center; padding: 40px; opacity: 0.5;'>**🎯 IndexTTS** - ⚠️ Not available - please check installation</div>")
                         # Create dummy components
-                        fish_ref_audio = gr.Audio(visible=False, value=None)
-                        fish_ref_text = gr.Textbox(visible=False, value="")
-                        fish_temperature = gr.Slider(visible=False, value=0.8)
-                        fish_top_p = gr.Slider(visible=False, value=0.8)
-                        fish_repetition_penalty = gr.Slider(visible=False, value=1.1)
-                        fish_max_tokens = gr.Slider(visible=False, value=1024)
-                        fish_seed = gr.Number(visible=False, value=None)
+                        indextts_ref_audio = gr.Audio(visible=False, value=None)
+                        indextts_temperature = gr.Slider(visible=False, value=0.8)
+                        indextts_seed = gr.Number(visible=False, value=None)
         
         # eBook to Audiobook Section
         if EBOOK_CONVERTER_AVAILABLE:
@@ -3976,9 +4885,10 @@ Alice: I went to Japan. It was absolutely incredible!""",
                             choices=[
                                 ("🎤 ChatterboxTTS", "ChatterboxTTS"),
                                 ("🗣️ Kokoro TTS", "Kokoro TTS"),
-                                ("🐟 Fish Speech", "Fish Speech")
-                            ],
-                            value="ChatterboxTTS" if CHATTERBOX_AVAILABLE else "Kokoro TTS" if KOKORO_AVAILABLE else "Fish Speech",
+                                                    ("🐟 Fish Speech", "Fish Speech"),
+                    ("🎯 IndexTTS", "IndexTTS")
+                ],
+                value="ChatterboxTTS" if CHATTERBOX_AVAILABLE else "Kokoro TTS" if KOKORO_AVAILABLE else "Fish Speech" if FISH_SPEECH_AVAILABLE else "IndexTTS",
                             label="🎯 TTS Engine for Audiobook",
                             elem_classes=["fade-in"]
                         )
@@ -4200,13 +5110,32 @@ Alice: I went to Japan. It was absolutely incredible!""",
                 return fish_status_text, selected_engine, selected_engine
             else:
                 return fish_status_text, selected_engine
-        
         def handle_unload_fish():
             message = unload_fish_speech()
             fish_status_text = "⭕ Not loaded"
             # Don't change engine selection when unloading
             return fish_status_text
-        
+
+        def handle_load_indextts():
+            success, message = init_indextts()
+            if success:
+                indextts_status_text = "✅ Loaded"
+                selected_engine = "IndexTTS"
+            else:
+                indextts_status_text = "❌ Load Failed"
+                selected_engine = "ChatterboxTTS"
+            
+            if EBOOK_CONVERTER_AVAILABLE:
+                return indextts_status_text, selected_engine, selected_engine
+            else:
+                return indextts_status_text, selected_engine
+
+        def handle_unload_indextts():
+            message = unload_indextts()
+            indextts_status_text = "⭕ Not loaded"
+            # Don't change engine selection when unloading
+            return indextts_status_text
+
         def handle_clear_temp_files():
             """Handle clearing Gradio temporary files and reset audio components."""
             result_message = clear_gradio_temp_files()
@@ -4241,7 +5170,7 @@ Alice: I went to Japan. It was absolutely incredible!""",
                 outputs=[kokoro_status]
             )
         
-        # Fish Speech management
+                # Fish Speech management
         if FISH_SPEECH_AVAILABLE:
             load_fish_btn.click(
                 fn=handle_load_fish,
@@ -4251,7 +5180,18 @@ Alice: I went to Japan. It was absolutely incredible!""",
                 fn=handle_unload_fish,
                 outputs=[fish_status]
             )
-        
+
+        # IndexTTS management
+        if INDEXTTS_AVAILABLE:
+            load_indextts_btn.click(
+                fn=handle_load_indextts,
+                outputs=[indextts_status, tts_engine, ebook_tts_engine] if EBOOK_CONVERTER_AVAILABLE else [indextts_status, tts_engine]
+            )
+            unload_indextts_btn.click(
+                fn=handle_unload_indextts,
+                outputs=[indextts_status]
+            )
+
         # Cleanup management
         clear_temp_btn.click(
             fn=handle_clear_temp_files,
@@ -4268,6 +5208,7 @@ Alice: I went to Japan. It was absolutely incredible!""",
                 chatterbox_cfg_weight, chatterbox_chunk_size, chatterbox_seed,
                 kokoro_voice, kokoro_speed,
                 fish_ref_audio, fish_ref_text, fish_temperature, fish_top_p, fish_repetition_penalty, fish_max_tokens, fish_seed,
+                indextts_ref_audio, indextts_temperature, indextts_seed,
                 gain_db, enable_eq, eq_bass, eq_mid, eq_treble,
                 enable_reverb, reverb_room, reverb_damping, reverb_wet,
                 enable_echo, echo_delay, echo_decay,
@@ -4279,46 +5220,68 @@ Alice: I went to Japan. It was absolutely incredible!""",
         # Conversation Mode Event Handlers
         def handle_analyze_script(script_text, selected_engine):
             """Analyze the conversation script and return detected speakers."""
-            # Check if Kokoro is selected and prevent analysis
-            if selected_engine == "Kokoro TTS":
-                error_text = (
-                    "⚠️ Script Analysis Not Available with Kokoro TTS\n\n"
-                    "Conversation mode is not supported with Kokoro TTS.\n"
-                    "Please switch to ChatterboxTTS or Fish Speech."
-                )
-                return (error_text, 
-                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), 
-                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False))
-            
             if not script_text.strip():
                 return ("No script provided", 
                         gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), 
-                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False))
+                        gr.update(visible=False), gr.update(visible=False), 
+                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),
+                        gr.update(visible=False), gr.update(visible=False))
             
             speakers = get_speaker_names_from_script(script_text)
             
             if not speakers:
                 return ("No speakers detected. Please check script format.", 
                         gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), 
-                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False))
+                        gr.update(visible=False), gr.update(visible=False), 
+                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),
+                        gr.update(visible=False), gr.update(visible=False))
             
             speakers_text = f"Found {len(speakers)} speakers:\n" + "\n".join([f"• {speaker}" for speaker in speakers])
-            speakers_text += f"\n\n📝 Instructions:\n1. Upload voice samples below\n2. Select TTS engine\n3. Click 'Generate Conversation'"
             
-            # Show/hide voice sample uploads based on number of speakers
-            audio_updates = []
-            for i in range(5):  # We have 5 audio components
-                if i < len(speakers):
-                    # Show and update label with speaker name
-                    audio_updates.append(gr.update(visible=True, label=f"🎤 {speakers[i]} Voice Sample"))
-                else:
-                    # Hide unused audio components
-                    audio_updates.append(gr.update(visible=False))
+            # Different instructions based on selected engine
+            if selected_engine == "Kokoro TTS":
+                # For Kokoro TTS, show voice selection radio buttons
+                speakers_text += f"\n\n🗣️ **Select Kokoro Voices for Each Speaker:**\n"
+                speakers_text += f"Click on the speaker names below to select voices.\n"
+                speakers_text += f"\n📝 **Instructions:**\n1. Click each speaker accordion to select their voice ✅\n2. Voice samples not needed for Kokoro TTS\n3. Click 'Generate Conversation'"
+                
+                # Hide voice sample uploads, show Kokoro voice accordions
+                audio_updates = []
+                kokoro_accordion_updates = []
+                for i in range(5):
+                    if i < len(speakers):
+                        # Hide audio upload, show Kokoro voice accordion with speaker name
+                        audio_updates.append(gr.update(visible=False))
+                        kokoro_accordion_updates.append(gr.update(visible=True, label=f"🗣️ {speakers[i]}"))
+                    else:
+                        # Hide both audio upload and Kokoro voice accordion
+                        audio_updates.append(gr.update(visible=False))
+                        kokoro_accordion_updates.append(gr.update(visible=False))
+                
+                all_updates = audio_updates + kokoro_accordion_updates
+            else:
+                # For other engines, show upload instructions
+                speakers_text += f"\n\n📝 **Instructions:**\n1. Upload voice samples below\n2. Select TTS engine\n3. Click 'Generate Conversation'"
+                
+                # Show/hide voice sample uploads based on number of speakers, hide Kokoro accordions
+                audio_updates = []
+                kokoro_accordion_updates = []
+                for i in range(5):
+                    if i < len(speakers):
+                        # Show audio upload with speaker name, hide Kokoro voice accordion
+                        audio_updates.append(gr.update(visible=True, label=f"🎤 {speakers[i]} Voice Sample"))
+                        kokoro_accordion_updates.append(gr.update(visible=False))
+                    else:
+                        # Hide both audio upload and Kokoro voice accordion
+                        audio_updates.append(gr.update(visible=False))
+                        kokoro_accordion_updates.append(gr.update(visible=False))
+                
+                all_updates = audio_updates + kokoro_accordion_updates
             
             # Show the conversation generate button when analysis is successful
             generate_btn_update = gr.update(visible=True)
             
-            return speakers_text, generate_btn_update, *audio_updates
+            return speakers_text, generate_btn_update, *all_updates
         
 
         
@@ -4334,97 +5297,132 @@ Alice: The food was unbelievable, and the people were so kind.
 Bob: I'd love to visit Japan someday. Any recommendations?
 Alice: Definitely visit Kyoto and try authentic ramen!"""
             
-            # Check if Kokoro is selected
-            if selected_engine == "Kokoro TTS":
-                error_text = (
-                    "⚠️ Example Script Not Available with Kokoro TTS\n\n"
-                    "Conversation mode is not supported with Kokoro TTS.\n"
-                    "Please switch to ChatterboxTTS or Fish Speech."
-                )
-                return (example_script, error_text, gr.update(visible=False),
-                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), 
-                        gr.update(visible=False), gr.update(visible=False))
-            
             # Auto-analyze the example script
             speakers = get_speaker_names_from_script(example_script)
             speakers_text = f"Found {len(speakers)} speakers:\n" + "\n".join([f"• {speaker}" for speaker in speakers])
-            speakers_text += f"\n\n📝 Instructions:\n1. Upload voice samples below\n2. Select TTS engine\n3. Click 'Generate Conversation'"
             
-            # Show/hide voice sample uploads based on number of speakers
-            audio_updates = []
-            for i in range(5):  # We have 5 audio components
-                if i < len(speakers):
-                    # Show and update label with speaker name
-                    audio_updates.append(gr.update(visible=True, label=f"🎤 {speakers[i]} Voice Sample"))
-                else:
-                    # Hide unused audio components
-                    audio_updates.append(gr.update(visible=False))
+            # Different instructions based on selected engine
+            if selected_engine == "Kokoro TTS":
+                # For Kokoro TTS, show voice selection radio buttons
+                speakers_text += f"\n\n🗣️ **Select Kokoro Voices for Each Speaker:**\n"
+                speakers_text += f"Click on the speaker names below to select voices.\n"
+                speakers_text += f"\n📝 **Instructions:**\n1. Click each speaker accordion to select their voice ✅\n2. Voice samples not needed for Kokoro TTS\n3. Click 'Generate Conversation'"
+                
+                # Hide voice sample uploads, show Kokoro voice accordions
+                audio_updates = []
+                kokoro_accordion_updates = []
+                for i in range(5):
+                    if i < len(speakers):
+                        # Hide audio upload, show Kokoro voice accordion with speaker name
+                        audio_updates.append(gr.update(visible=False))
+                        kokoro_accordion_updates.append(gr.update(visible=True, label=f"🗣️ {speakers[i]}"))
+                    else:
+                        # Hide both audio upload and Kokoro voice accordion
+                        audio_updates.append(gr.update(visible=False))
+                        kokoro_accordion_updates.append(gr.update(visible=False))
+                
+                all_updates = audio_updates + kokoro_accordion_updates
+            else:
+                # For other engines, show upload instructions
+                speakers_text += f"\n\n📝 **Instructions:**\n1. Upload voice samples below\n2. Select TTS engine\n3. Click 'Generate Conversation'"
+                
+                # Show/hide voice sample uploads based on number of speakers, hide Kokoro accordions
+                audio_updates = []
+                kokoro_accordion_updates = []
+                for i in range(5):
+                    if i < len(speakers):
+                        # Show audio upload with speaker name, hide Kokoro voice accordion
+                        audio_updates.append(gr.update(visible=True, label=f"🎤 {speakers[i]} Voice Sample"))
+                        kokoro_accordion_updates.append(gr.update(visible=False))
+                    else:
+                        # Hide both audio upload and Kokoro voice accordion
+                        audio_updates.append(gr.update(visible=False))
+                        kokoro_accordion_updates.append(gr.update(visible=False))
+                
+                all_updates = audio_updates + kokoro_accordion_updates
             
             # Show the conversation generate button when example is loaded
             generate_btn_update = gr.update(visible=True)
             
-            return example_script, speakers_text, generate_btn_update, *audio_updates
+            return example_script, speakers_text, generate_btn_update, *all_updates
         
         def handle_clear_script():
             """Clear the conversation script and reset components."""
-            # Hide all audio components and the generate button
+            # Hide all audio components, Kokoro voice accordions, and the generate button
             audio_updates = [gr.update(visible=False, value=None) for _ in range(5)]
+            kokoro_accordion_updates = [gr.update(visible=False) for _ in range(5)]
             generate_btn_update = gr.update(visible=False)
-            return "", "No speakers detected", generate_btn_update, *audio_updates
+            all_updates = audio_updates + kokoro_accordion_updates
+            return "", "No speakers detected", generate_btn_update, *all_updates
         
         def handle_tts_engine_change(selected_engine):
             """Handle TTS engine selection changes and update UI accordingly."""
             print(f"🎯 TTS Engine changed to: {selected_engine}")
             
-            # Check if Kokoro is selected - disable conversation mode
-            if selected_engine == "Kokoro TTS":
-                # Disable conversation mode when Kokoro is selected
-                conversation_info_text = (
-                    "⚠️ Conversation Mode Not Available with Kokoro TTS\n\n"
-                    "Kokoro TTS uses pre-trained voice models and doesn't support "
-                    "voice cloning from reference audio samples.\n\n"
-                    "For conversation mode, please use:\n"
-                    "• ChatterboxTTS - Voice cloning with reference audio\n"
-                    "• Fish Speech - Natural TTS with voice matching\n\n"
-                    "Switch to ChatterboxTTS or Fish Speech to use conversation mode."
-                )
-                return (
-                    gr.update(visible=False),  # Hide conversation generate button
-                    gr.update(visible=True, value=conversation_info_text),  # Show warning in conversation info
-                    gr.update(interactive=False),  # Disable conversation script
-                    gr.update(interactive=False),  # Disable analyze button
-                    gr.update(interactive=False),  # Disable example button
-                    gr.update(interactive=False),  # Disable clear button
-                    gr.update(interactive=False),  # Disable pause slider
-                    gr.update(interactive=False),  # Disable transition pause slider
-                )
-            else:
-                # Enable conversation mode for ChatterboxTTS and Fish Speech
-                conversation_info_text = "Ready for conversation generation..."
-                return (
-                    gr.update(visible=False),  # Keep conversation button hidden until script analyzed
-                    gr.update(visible=True, value=conversation_info_text),  # Reset conversation info
-                    gr.update(interactive=True),  # Enable conversation script
-                    gr.update(interactive=True),  # Enable analyze button
-                    gr.update(interactive=True),  # Enable example button
-                    gr.update(interactive=True),  # Enable clear button
-                    gr.update(interactive=True),  # Enable pause slider
-                    gr.update(interactive=True),  # Enable transition pause slider
-                )
+            # Enable conversation mode for all engines now including Kokoro TTS
+            conversation_info_text = "Ready for conversation generation..."
+            return (
+                gr.update(visible=False),  # Keep conversation button hidden until script analyzed
+                gr.update(visible=True, value=conversation_info_text),  # Reset conversation info
+                gr.update(interactive=True),  # Enable conversation script
+                gr.update(interactive=True),  # Enable analyze button
+                gr.update(interactive=True),  # Enable example button
+                gr.update(interactive=True),  # Enable clear button
+                gr.update(interactive=True),  # Enable pause slider
+                gr.update(interactive=True),  # Enable transition pause slider
+            )
+
+        def handle_generate_conversation_advanced(script_text, pause_duration, transition_pause, audio_format, voice_samples, kokoro_voices, selected_engine):
+            """Generate the multi-voice conversation with voice samples or Kokoro voice selections."""
+            print(f"🎭 Conversation handler called with engine: {selected_engine}")
+            
+            if not script_text.strip():
+                return None, "❌ No conversation script provided"
+            
+            try:
+                # For Kokoro TTS, use the selected voices instead of voice samples
+                if selected_engine == "Kokoro TTS":
+                    result = generate_conversation_audio_kokoro(
+                        script_text,
+                        kokoro_voices,
+                        selected_engine=selected_engine,
+                        conversation_pause_duration=pause_duration,
+                        speaker_transition_pause=transition_pause,
+                        effects_settings=None,
+                        audio_format=audio_format
+                    )
+                else:
+                    # Use the original function for other engines
+                    result = generate_conversation_audio_simple(
+                        script_text,
+                        voice_samples,
+                        selected_engine=selected_engine,
+                        conversation_pause_duration=pause_duration,
+                        speaker_transition_pause=transition_pause,
+                        effects_settings=None,
+                        audio_format=audio_format
+                    )
+                
+                if result[0] is None:
+                    print(f"❌ Conversation generation failed: {result[1]}")
+                    return None, result[1]
+                
+                audio_data, summary = result
+                summary_text = format_conversation_info(summary)
+                
+                print(f"✅ Conversation generated successfully")
+                return audio_data, summary_text
+                
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                error_msg = f"❌ Generation error: {str(e)}"
+                print(f"❌ Exception in conversation handler: {error_msg}")
+                return None, error_msg
 
         def handle_generate_conversation_simple(script_text, pause_duration, transition_pause, audio_format, voice_samples, selected_engine):
             """Generate the multi-voice conversation with voice samples - Simplified version."""
             print(f"🎭 Conversation handler called with engine: {selected_engine}")
-            
-            # Check if Kokoro is selected and reject
-            if selected_engine == "Kokoro TTS":
-                error_msg = (
-                    "❌ Conversation Mode Not Supported with Kokoro TTS\n\n"
-                    "Kokoro TTS uses pre-trained voice models and doesn't support "
-                    "voice cloning from reference audio samples required for conversation mode.\n\n"
-                    "Please switch to ChatterboxTTS or Fish Speech for conversation generation."
-                )
-                return None, error_msg
             
             if not script_text.strip():
                 return None, "❌ No conversation script provided"
@@ -4464,7 +5462,9 @@ Alice: Definitely visit Kyoto and try authentic ramen!"""
             inputs=[conversation_script, tts_engine],
             outputs=[detected_speakers, generate_conversation_btn,
                     speaker_1_audio, speaker_2_audio, speaker_3_audio, 
-                    speaker_4_audio, speaker_5_audio]
+                    speaker_4_audio, speaker_5_audio,
+                    speaker_1_kokoro_accordion, speaker_2_kokoro_accordion, speaker_3_kokoro_accordion,
+                    speaker_4_kokoro_accordion, speaker_5_kokoro_accordion]
         )
         
 
@@ -4474,19 +5474,23 @@ Alice: Definitely visit Kyoto and try authentic ramen!"""
             inputs=[tts_engine],
             outputs=[conversation_script, detected_speakers, generate_conversation_btn,
                     speaker_1_audio, speaker_2_audio, speaker_3_audio, 
-                    speaker_4_audio, speaker_5_audio]
+                    speaker_4_audio, speaker_5_audio,
+                    speaker_1_kokoro_accordion, speaker_2_kokoro_accordion, speaker_3_kokoro_accordion,
+                    speaker_4_kokoro_accordion, speaker_5_kokoro_accordion]
         )
         
         clear_script_btn.click(
             fn=handle_clear_script,
             outputs=[conversation_script, detected_speakers, generate_conversation_btn,
                     speaker_1_audio, speaker_2_audio, speaker_3_audio, 
-                    speaker_4_audio, speaker_5_audio]
+                    speaker_4_audio, speaker_5_audio,
+                    speaker_1_kokoro_accordion, speaker_2_kokoro_accordion, speaker_3_kokoro_accordion,
+                    speaker_4_kokoro_accordion, speaker_5_kokoro_accordion]
         )
         
         generate_conversation_btn.click(
-            fn=lambda script, pause, trans_pause, audio_fmt, s1, s2, s3, s4, s5, engine: handle_generate_conversation_simple(
-                script, pause, trans_pause, audio_fmt, [s1, s2, s3, s4, s5], engine
+            fn=lambda script, pause, trans_pause, audio_fmt, s1, s2, s3, s4, s5, kv1, kv2, kv3, kv4, kv5, engine: handle_generate_conversation_advanced(
+                script, pause, trans_pause, audio_fmt, [s1, s2, s3, s4, s5], [kv1, kv2, kv3, kv4, kv5], engine
             ),
             inputs=[
                 conversation_script, 
@@ -4495,6 +5499,8 @@ Alice: Definitely visit Kyoto and try authentic ramen!"""
                 audio_format,  # Use the same audio format selector as single voice mode
                 speaker_1_audio, speaker_2_audio, speaker_3_audio, 
                 speaker_4_audio, speaker_5_audio,
+                speaker_1_kokoro_voice, speaker_2_kokoro_voice, speaker_3_kokoro_voice,
+                speaker_4_kokoro_voice, speaker_5_kokoro_voice,
                 tts_engine  # Use the main TTS engine selector
             ],
             outputs=[audio_output, conversation_info]  # Use same audio output as single voice mode
@@ -4542,6 +5548,8 @@ Alice: Definitely visit Kyoto and try authentic ramen!"""
                 cb_ref_audio, cb_exag, cb_temp, cb_cfg, cb_seed,
                 kok_voice, kok_speed,
                 fish_ref_audio, fish_ref_text, fish_temp, fish_top_p, fish_rep_pen, fish_max_tok, fish_seed_val,
+                # IndexTTS parameters
+                idx_ref_audio, idx_temp, idx_seed,
                 gain, eq_en, eq_b, eq_m, eq_t,
                 rev_en, rev_room, rev_damp, rev_wet,
                 echo_en, echo_del, echo_dec,
@@ -4558,6 +5566,8 @@ Alice: Definitely visit Kyoto and try authentic ramen!"""
                     cb_ref_audio, cb_exag, cb_temp, cb_cfg, cb_seed,
                     kok_voice, kok_speed,
                     fish_ref_audio, fish_ref_text, fish_temp, fish_top_p, fish_rep_pen, fish_max_tok, fish_seed_val,
+                    # IndexTTS parameters
+                    idx_ref_audio, idx_temp, idx_seed,
                     gain, eq_en, eq_b, eq_m, eq_t,
                     rev_en, rev_room, rev_damp, rev_wet,
                     echo_en, echo_del, echo_dec,
@@ -4611,6 +5621,8 @@ Alice: Definitely visit Kyoto and try authentic ramen!"""
                     # Fish Speech parameters
                     fish_ref_audio, fish_ref_text, fish_temperature, fish_top_p, 
                     fish_repetition_penalty, fish_max_tokens, fish_seed,
+                    # IndexTTS parameters
+                    indextts_ref_audio, indextts_temperature, indextts_seed,
                     # Effects parameters
                     gain_db, enable_eq, eq_bass, eq_mid, eq_treble,
                     enable_reverb, reverb_room, reverb_damping, reverb_wet,
@@ -4635,13 +5647,23 @@ Alice: Definitely visit Kyoto and try authentic ramen!"""
             upload_btn.click(
                 fn=upload_and_refresh,
                 inputs=[custom_voice_files, custom_voice_name],
-                outputs=[upload_status, custom_voice_list, custom_voice_name, custom_voice_files, kokoro_voice]
+                outputs=[upload_status, custom_voice_list, custom_voice_name, custom_voice_files, 
+                         kokoro_voice,  # Main voice selector
+                         speaker_1_kokoro_voice, speaker_2_kokoro_voice, speaker_3_kokoro_voice,
+                         speaker_4_kokoro_voice, speaker_5_kokoro_voice]  # Conversation mode voice selectors
             )
             
             # Refresh voice list
             refresh_voices_btn.click(
                 fn=refresh_kokoro_voice_list,
                 outputs=[kokoro_voice]
+            )
+            
+            # Refresh all conversation mode voice selectors too
+            refresh_voices_btn.click(
+                fn=refresh_all_kokoro_voices,
+                outputs=[speaker_1_kokoro_voice, speaker_2_kokoro_voice, speaker_3_kokoro_voice,
+                         speaker_4_kokoro_voice, speaker_5_kokoro_voice]
             )
             
             # Refresh custom voice list
@@ -4657,10 +5679,11 @@ if __name__ == "__main__":
     print("🚀 Starting Unified TTS Pro...")
     
     # Create and launch the interface
-    demo = create_gradio_interface()
-    demo.launch(
-        server_name="127.0.0.1",
-        server_port=7860,
-        share=False,
-        show_error=True
-    ) 
+    with suppress_specific_warnings():
+        demo = create_gradio_interface()
+        demo.launch(
+            server_name="127.0.0.1",
+            server_port=7860,
+            share=False,
+            show_error=True
+        ) 
