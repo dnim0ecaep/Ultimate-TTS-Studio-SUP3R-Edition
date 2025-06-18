@@ -8,6 +8,7 @@ We’ve pushed another exciting update packed with new functionality and improve
 
 ### 🗣️ TTS Integration Expanded
 
+* **F5-TTS** has now been added as a **fifth supported engine**, and it works seamlessly across all modes.
 * **Index-TTS** has been added as a supported speech engine.
 * All **TTS engines now work across all modes**, including narration, conversation, and ambient.
 
