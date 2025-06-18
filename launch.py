@@ -136,6 +136,16 @@ except ImportError:
     FISH_SPEECH_AVAILABLE = False
     print("⚠️ Fish Speech not available. Some features will be disabled.")
 
+# F5-TTS imports
+try:
+    with suppress_specific_warnings():
+        from f5_tts_handler import get_f5_tts_handler
+    F5_TTS_AVAILABLE = True
+    print("✅ F5-TTS handler loaded")
+except ImportError:
+    F5_TTS_AVAILABLE = False
+    print("⚠️ F5-TTS not available. Some features will be disabled.")
+
 # eBook Converter imports
 try:
     with suppress_specific_warnings():
@@ -436,6 +446,20 @@ def generate_conversation_audio_simple(
                         ref_audio,
                         0.8,  # temperature
                         None, # seed
+                        effects_settings,
+                        audio_format,
+                        skip_file_saving=True
+                    )
+                elif selected_engine == 'F5-TTS':
+                    print(f"🎵 Using F5-TTS for {speaker}")
+                    result = generate_f5_tts(
+                        text,
+                        ref_audio,
+                        None,  # ref_text
+                        1.0,   # speed
+                        0.15,  # cross_fade
+                        False, # remove_silence
+                        None,  # seed
                         effects_settings,
                         audio_format,
                         skip_file_saving=True
@@ -1072,7 +1096,8 @@ MODEL_STATUS = {
     'chatterbox': {'loaded': False, 'loading': False},
     'kokoro': {'loaded': False, 'loading': False},
     'fish_speech': {'loaded': False, 'loading': False},
-    'indextts': {'loaded': False, 'loading': False}
+    'indextts': {'loaded': False, 'loading': False},
+    'f5_tts': {'loaded': False, 'loading': False, 'models': {}}
 }
 
 def init_chatterbox():
@@ -1543,6 +1568,19 @@ def get_model_status():
                 status_text += "🎯 **IndexTTS:** ⭕ Not loaded (Models will auto-download)\n"
     else:
         status_text += "🎯 **IndexTTS:** ❌ Not available\n"
+    
+    # F5-TTS status
+    if F5_TTS_AVAILABLE:
+        if MODEL_STATUS['f5_tts']['loading']:
+            status_text += "🎵 **F5-TTS:** ⏳ Loading...\n"
+        elif MODEL_STATUS['f5_tts']['loaded']:
+            handler = get_f5_tts_handler()
+            model_info = handler.get_model_info()
+            status_text += f"🎵 **F5-TTS:** ✅ Loaded ({model_info['model']})\n"
+        else:
+            status_text += "🎵 **F5-TTS:** ⭕ Not loaded\n"
+    else:
+        status_text += "🎵 **F5-TTS:** ❌ Not available\n"
     
     return status_text
 
@@ -2680,6 +2718,72 @@ def generate_indextts_tts(
         print(error_msg)
         return None, error_msg
 
+# ===== F5-TTS FUNCTIONS =====
+def generate_f5_tts(
+    text_input: str,
+    f5_ref_audio: str = None,
+    f5_ref_text: str = None,
+    f5_speed: float = 1.0,
+    f5_cross_fade: float = 0.15,
+    f5_remove_silence: bool = False,
+    f5_seed: int = None,
+    effects_settings=None,
+    audio_format: str = "wav",
+    skip_file_saving: bool = False
+):
+    """Generate TTS audio using F5-TTS."""
+    if not F5_TTS_AVAILABLE:
+        return None, "❌ F5-TTS not available - check installation"
+    
+    handler = get_f5_tts_handler()
+    
+    # Check if model is loaded
+    if handler.model is None:
+        return None, "❌ F5-TTS not loaded - please load a model first"
+    
+    print(f"F5-TTS generate called - Model loaded: {handler.model is not None}, Current model: {handler.current_model}")
+    
+    try:
+        print(f"🎵 Generating F5-TTS audio...")
+        
+        # Generate audio
+        result = handler.generate_speech(
+            text=text_input,
+            ref_audio_path=f5_ref_audio,
+            ref_text=f5_ref_text,
+            speed=f5_speed,
+            cross_fade_duration=f5_cross_fade,
+            remove_silence=f5_remove_silence,
+            seed=f5_seed if f5_seed != 0 else None
+        )
+        
+        if result[0] is None:
+            return None, result[1]
+        
+        sample_rate, audio_data = result[0]
+        
+        # Apply effects if requested
+        if effects_settings:
+            audio_data = apply_audio_effects(audio_data, sample_rate, effects_settings)
+        
+        # Save audio file if not skipping
+        if not skip_file_saving:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename_base = f"f5_tts_output_{timestamp}"
+            filepath, filename = save_audio_with_format(
+                audio_data, sample_rate, audio_format, output_folder, filename_base
+            )
+            status_message = f"✅ Generated with F5-TTS - Saved as: {filename}"
+        else:
+            status_message = f"✅ Generated with F5-TTS"
+        
+        return (sample_rate, audio_data), status_message
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return None, f"❌ F5-TTS error: {str(e)}"
+
 # ===== VOICE PRESET FUNCTIONS =====
 def load_voice_presets():
     """Load voice presets from JSON file."""
@@ -2776,6 +2880,13 @@ def convert_ebook_to_audiobook(
     indextts_ref_audio: str = None,
     indextts_temperature: float = 0.8,
     indextts_seed: int = None,
+    # F5-TTS parameters
+    f5_ref_audio: str = None,
+    f5_ref_text: str = None,
+    f5_speed: float = 1.0,
+    f5_cross_fade: float = 0.15,
+    f5_remove_silence: bool = False,
+    f5_seed: int = 0,
     # Effects parameters
     gain_db: float = 0,
     enable_eq: bool = False,
@@ -2863,6 +2974,11 @@ def convert_ebook_to_audiobook(
                 audio_result, status = generate_indextts_tts(
                     chunk['content'], indextts_ref_audio, indextts_temperature,
                     indextts_seed, effects_settings, "wav", skip_file_saving=True  # Skip saving individual chunks
+                )
+            elif tts_engine == "F5-TTS":
+                audio_result, status = generate_f5_tts(
+                    chunk['content'], f5_ref_audio, f5_ref_text, f5_speed, f5_cross_fade,
+                    f5_remove_silence, f5_seed, effects_settings, "wav", skip_file_saving=True  # Skip saving individual chunks
                 )
             else:
                 return None, f"❌ Invalid TTS engine: {tts_engine}"
@@ -3014,6 +3130,13 @@ def generate_unified_tts(
     indextts_ref_audio: str = None,
     indextts_temperature: float = 0.8,
     indextts_seed: int = None,
+    # F5-TTS parameters
+    f5_ref_audio: str = None,
+    f5_ref_text: str = None,
+    f5_speed: float = 1.0,
+    f5_cross_fade: float = 0.15,
+    f5_remove_silence: bool = False,
+    f5_seed: int = 0,
     # Effects parameters
     gain_db: float = 0,
     enable_eq: bool = False,
@@ -3072,6 +3195,11 @@ def generate_unified_tts(
         return generate_indextts_tts(
             text_input, indextts_ref_audio, indextts_temperature, indextts_seed,
             effects_settings, audio_format
+        )
+    elif tts_engine == "F5-TTS":
+        return generate_f5_tts(
+            text_input, f5_ref_audio, f5_ref_text, f5_speed, f5_cross_fade,
+            f5_remove_silence, f5_seed, effects_settings, audio_format
         )
     else:
         return None, "❌ Invalid TTS engine selected"
@@ -4126,7 +4254,7 @@ def create_gradio_interface():
             ✨ ULTIMATE TTS STUDIO PRO ✨
             </div>
             <div class="subtitle">
-            🎭 ChatterboxTTS + Kokoro TTS + Fish Speech + IndexTTS | SUP3R EDITION 🚀<br/>
+            🎭 ChatterboxTTS + Kokoro TTS + Fish Speech + IndexTTS + F5-TTS | SUP3R EDITION 🚀<br/>
             <strong>Advanced Text-to-Speech with Multiple Engines, Voice Presets, Audio Effects & Export Options</strong>
             </div>
         </div>
@@ -4161,6 +4289,60 @@ def create_gradio_interface():
                 elem_classes=["fade-in"],
                 visible=False  # Hide the detailed status by default
             )
+            
+            # F5-TTS Management in collapsible accordion
+            with gr.Accordion("🎵 F5-TTS Model Management", open=False, elem_classes=["fade-in"]):
+                if F5_TTS_AVAILABLE:
+                    f5_model_status = gr.Markdown(
+                        value="Loading model status...",
+                        elem_classes=["fade-in"]
+                    )
+                    
+                    with gr.Row():
+                        # Get model choices dynamically from F5TTSHandler
+                        from f5_tts_handler import get_f5_tts_handler
+                        f5_handler = get_f5_tts_handler()
+                        f5_model_choices = list(f5_handler.AVAILABLE_MODELS.keys())
+                        
+                        f5_model_select = gr.Dropdown(
+                            choices=f5_model_choices,
+                            value="F5-TTS Base",
+                            label="🎯 Select Model",
+                            elem_classes=["fade-in"]
+                        )
+                        
+                        with gr.Column():
+                            f5_download_btn = gr.Button(
+                                "📥 Download Model",
+                                variant="secondary",
+                                elem_classes=["fade-in"]
+                            )
+                            f5_load_btn = gr.Button(
+                                "🚀 Load Model",
+                                variant="primary",
+                                elem_classes=["fade-in"]
+                            )
+                            f5_unload_btn = gr.Button(
+                                "🗑️ Unload Model",
+                                variant="secondary",
+                                elem_classes=["fade-in"]
+                            )
+                    
+                    f5_download_status = gr.Textbox(
+                        label="📊 Download Status",
+                        interactive=False,
+                        elem_classes=["fade-in"],
+                        visible=False
+                    )
+                else:
+                    gr.Markdown("⚠️ F5-TTS not available - please install with: `pip install f5-tts`")
+                    # Create dummy components for F5-TTS model management
+                    f5_model_select = gr.Dropdown(visible=False, value="F5-TTS Base", choices=[])
+                    f5_download_btn = gr.Button(visible=False)
+                    f5_load_btn = gr.Button(visible=False)
+                    f5_unload_btn = gr.Button(visible=False)
+                    f5_model_status = gr.Markdown(visible=False, value="")
+                    f5_download_status = gr.Textbox(visible=False, value="")
             
             with gr.Row():
                 # ChatterboxTTS Management - Compact
@@ -4241,29 +4423,34 @@ def create_gradio_interface():
                             scale=1
                         )
                 
+                # IndexTTS Management - Compact
+                with gr.Column():
+                    with gr.Row():
+                        gr.Markdown("🎯 **IndexTTS**", elem_classes=["fade-in"])
+                        indextts_status = gr.Markdown(
+                            value="⭕ Not loaded" if INDEXTTS_AVAILABLE else "❌ Not available",
+                            elem_classes=["fade-in"]
+                        )
+                    with gr.Row():
+                        load_indextts_btn = gr.Button(
+                            "🔄 Load",
+                            variant="primary",
+                            size="sm",
+                            visible=INDEXTTS_AVAILABLE,
+                            elem_classes=["fade-in"],
+                            scale=1
+                        )
+                        unload_indextts_btn = gr.Button(
+                            "🗑️ Unload",
+                            variant="secondary",
+                            size="sm",
+                            visible=INDEXTTS_AVAILABLE,
+                            elem_classes=["fade-in"],
+                            scale=1
+                        )
+                
                 # System Cleanup - Compact
                 with gr.Column():
-                    # IndexTTS Section
-                    if INDEXTTS_AVAILABLE:
-                        with gr.Row():
-                            indextts_status = gr.Markdown(
-                                "🎯 **IndexTTS:** ⭕ Not loaded",
-                                elem_classes=["model-status"]
-                            )
-                        with gr.Row():
-                            load_indextts_btn = gr.Button(
-                                "🚀 Load IndexTTS",
-                                variant="primary",
-                                size="sm",
-                                visible=INDEXTTS_AVAILABLE
-                            )
-                            unload_indextts_btn = gr.Button(
-                                "🗑️ Unload",
-                                variant="secondary",
-                                size="sm",
-                                visible=INDEXTTS_AVAILABLE
-                            )
-                    
                     with gr.Row():
                         gr.Markdown("🧹 **System Cleanup**", elem_classes=["fade-in"])
                         cleanup_status = gr.Markdown(
@@ -4288,7 +4475,7 @@ def create_gradio_interface():
                     with gr.TabItem("📝 TEXT TO SYNTHESIZE", id="single_voice"):
                         # Text input with enhanced styling
                         text = gr.Textbox(
-                            value="Hello! This is a demonstration of the ULTIMATE TTS STUDIO. You can choose between ChatterboxTTS, Fish Speech, and IndexTTS for custom voice cloning or Kokoro TTS for high-quality pre-trained voices.",
+                            value="Hello! This is a demonstration of the ultimate TTS studio. You can choose between Chatterbox TTS. Fish Speech, Index TTS and F5 TTS for custom voice cloning or Kokoro TTS for high-quality pre-trained voices.",
                             label="📝 Text to synthesize",
                             lines=5,
                             placeholder="Enter your text here...",
@@ -4373,7 +4560,7 @@ Alice: I went to Japan. It was absolutely incredible!""",
                         # Voice Samples Section for Conversation Mode
                         with gr.Group():
                             gr.Markdown("### 🎤 Voice Samples for Speakers")
-                            gr.Markdown("*Upload voice samples for each speaker (required for ChatterboxTTS, Fish Speech, and IndexTTS only)*")
+                            gr.Markdown("*Upload voice samples for each speaker (required for ChatterboxTTS, Fish Speech, IndexTTS and F5-TTS only)*")
                             
                             # Dynamic voice sample uploads (up to 5 speakers) and Kokoro voice selection
                             with gr.Row():
@@ -4484,10 +4671,11 @@ Alice: I went to Japan. It was absolutely incredible!""",
                     choices=[
                         ("🎤 ChatterboxTTS - Voice Cloning", "ChatterboxTTS"),
                         ("🗣️ Kokoro TTS - Pre-trained Voices", "Kokoro TTS"),
-                                            ("🐟 Fish Speech - Natural TTS", "Fish Speech"),
-                    ("🎯 IndexTTS - Industrial Quality", "IndexTTS")
-                ],
-                value="ChatterboxTTS" if CHATTERBOX_AVAILABLE else "Kokoro TTS" if KOKORO_AVAILABLE else "Fish Speech" if FISH_SPEECH_AVAILABLE else "IndexTTS",
+                        ("🐟 Fish Speech - Natural TTS", "Fish Speech"),
+                        ("🎯 IndexTTS - Industrial Quality", "IndexTTS"),
+                        ("🎵 F5-TTS - Flow Matching TTS", "F5-TTS")
+                    ],
+                    value="ChatterboxTTS" if CHATTERBOX_AVAILABLE else "Kokoro TTS" if KOKORO_AVAILABLE else "Fish Speech" if FISH_SPEECH_AVAILABLE else "IndexTTS" if INDEXTTS_AVAILABLE else "F5-TTS",
                     label="🎯 Select TTS Engine",
                     info="Choose your preferred text-to-speech engine (auto-selects when you load a model)",
                     elem_classes=["fade-in"]
@@ -4820,6 +5008,72 @@ Alice: I went to Japan. It was absolutely incredible!""",
                         indextts_ref_audio = gr.Audio(visible=False, value=None)
                         indextts_temperature = gr.Slider(visible=False, value=0.8)
                         indextts_seed = gr.Number(visible=False, value=None)
+                
+                # F5-TTS Controls
+                if F5_TTS_AVAILABLE:
+                    with gr.Group() as f5_tts_controls:
+                        gr.Markdown("**🎵 F5-TTS - Flow Matching Text-to-Speech**")
+                        gr.Markdown("*💡 High-quality voice cloning - Load model from Model Management section above*", elem_classes=["fade-in"])
+                        
+                        # Generation settings
+                        with gr.Row():
+                            with gr.Column(scale=2):
+                                f5_ref_audio = gr.Audio(
+                                    sources=["upload", "microphone"],
+                                    type="filepath",
+                                    label="🎤 Reference Audio (Optional)",
+                                    elem_classes=["fade-in"]
+                                )
+                                
+                                f5_ref_text = gr.Textbox(
+                                    label="📝 Reference Text (Optional)",
+                                    placeholder="Text spoken in reference audio",
+                                    elem_classes=["fade-in"]
+                                )
+                            
+                            with gr.Column(scale=1):
+                                f5_speed = gr.Slider(
+                                    0.5, 2.0, step=0.1,
+                                    label="⚡ Speed",
+                                    value=1.0,
+                                    info="Speech speed multiplier",
+                                    elem_classes=["fade-in"]
+                                )
+                                
+                                f5_cross_fade = gr.Slider(
+                                    0.0, 0.5, step=0.05,
+                                    label="🔄 Cross-fade Duration",
+                                    value=0.15,
+                                    info="Smooth transitions (seconds)",
+                                    elem_classes=["fade-in"]
+                                )
+                        
+                        with gr.Accordion("🔧 Advanced F5-TTS Settings", open=False, elem_classes=["fade-in"]):
+                            with gr.Row():
+                                f5_remove_silence = gr.Checkbox(
+                                    label="🔇 Remove Silence",
+                                    value=False,
+                                    info="Remove silence from start/end",
+                                    elem_classes=["fade-in"]
+                                )
+                                
+                                f5_seed = gr.Number(
+                                    value=0,
+                                    label="🎲 Seed (0=random)",
+                                    info="For reproducible results",
+                                    elem_classes=["fade-in"]
+                                )
+                else:
+                    # Placeholder when F5-TTS is not available
+                    with gr.Group():
+                        gr.Markdown("<div style='text-align: center; padding: 40px; opacity: 0.5;'>**🎵 F5-TTS** - ⚠️ Not available - please check installation</div>")
+                        # Create dummy components for generation settings only
+                        f5_ref_audio = gr.Audio(visible=False, value=None)
+                        f5_ref_text = gr.Textbox(visible=False, value="")
+                        f5_speed = gr.Slider(visible=False, value=1.0)
+                        f5_cross_fade = gr.Slider(visible=False, value=0.15)
+                        f5_remove_silence = gr.Checkbox(visible=False, value=False)
+                        f5_seed = gr.Number(visible=False, value=0)
         
         # eBook to Audiobook Section
         if EBOOK_CONVERTER_AVAILABLE:
@@ -4885,10 +5139,11 @@ Alice: I went to Japan. It was absolutely incredible!""",
                             choices=[
                                 ("🎤 ChatterboxTTS", "ChatterboxTTS"),
                                 ("🗣️ Kokoro TTS", "Kokoro TTS"),
-                                                    ("🐟 Fish Speech", "Fish Speech"),
-                    ("🎯 IndexTTS", "IndexTTS")
-                ],
-                value="ChatterboxTTS" if CHATTERBOX_AVAILABLE else "Kokoro TTS" if KOKORO_AVAILABLE else "Fish Speech" if FISH_SPEECH_AVAILABLE else "IndexTTS",
+                                ("🐟 Fish Speech", "Fish Speech"),
+                                ("🎯 IndexTTS", "IndexTTS"),
+                                ("🎵 F5-TTS", "F5-TTS")
+                            ],
+                            value="ChatterboxTTS" if CHATTERBOX_AVAILABLE else "Kokoro TTS" if KOKORO_AVAILABLE else "Fish Speech" if FISH_SPEECH_AVAILABLE else "IndexTTS" if INDEXTTS_AVAILABLE else "F5-TTS",
                             label="🎯 TTS Engine for Audiobook",
                             elem_classes=["fade-in"]
                         )
@@ -5119,11 +5374,11 @@ Alice: I went to Japan. It was absolutely incredible!""",
         def handle_load_indextts():
             success, message = init_indextts()
             if success:
-                indextts_status_text = "✅ Loaded"
+                indextts_status_text = "✅ Loaded (Auto-selected)"
                 selected_engine = "IndexTTS"
             else:
-                indextts_status_text = "❌ Load Failed"
-                selected_engine = "ChatterboxTTS"
+                indextts_status_text = "❌ Failed to load"
+                selected_engine = gr.update()
             
             if EBOOK_CONVERTER_AVAILABLE:
                 return indextts_status_text, selected_engine, selected_engine
@@ -5191,6 +5446,121 @@ Alice: I went to Japan. It was absolutely incredible!""",
                 fn=handle_unload_indextts,
                 outputs=[indextts_status]
             )
+        
+        # F5-TTS management functions
+        def update_f5_model_status():
+            """Update F5-TTS model status display"""
+            if not F5_TTS_AVAILABLE:
+                return "❌ F5-TTS not available - please install"
+            
+            handler = get_f5_tts_handler()
+            status = handler.get_model_status()
+            
+            status_text = "📊 **F5-TTS Model Status:**\n\n"
+            for model_name, model_info in status.items():
+                if model_info['downloaded']:
+                    if model_info['loaded']:
+                        status_text += f"✅ **{model_name}** - Loaded and ready\n"
+                    else:
+                        status_text += f"📦 **{model_name}** - Downloaded (click Load to use)\n"
+                else:
+                    status_text += f"⬇️ **{model_name}** - Not downloaded ({model_info['size']})\n"
+                status_text += f"   *{model_info['description']}*\n\n"
+            
+            return status_text
+        
+        def handle_f5_download(model_name):
+            """Handle F5-TTS model download"""
+            if not F5_TTS_AVAILABLE:
+                return gr.update(visible=True, value="❌ F5-TTS not available"), update_f5_model_status()
+            
+            handler = get_f5_tts_handler()
+            
+            # Create progress callback
+            progress_messages = []
+            def progress_callback(message):
+                progress_messages.append(message)
+                return gr.update(visible=True, value="\n".join(progress_messages))
+            
+            # Show initial message
+            yield gr.update(visible=True, value=f"Starting download of {model_name}..."), update_f5_model_status()
+            
+            # Download with progress
+            success, message = handler.download_model(model_name, progress_callback)
+            
+            if success:
+                final_message = f"✅ {message}\n" + "\n".join(progress_messages)
+            else:
+                final_message = f"❌ {message}"
+            
+            yield gr.update(visible=True, value=final_message), update_f5_model_status()
+        
+        def handle_f5_load(model_name):
+            """Handle F5-TTS model loading"""
+            if not F5_TTS_AVAILABLE:
+                return "❌ F5-TTS not available", update_f5_model_status(), gr.update()
+            
+            handler = get_f5_tts_handler()
+            print(f"Attempting to load F5-TTS model: {model_name}")
+            print(f"Handler before load - Model: {handler.model is not None}, Current: {handler.current_model}")
+            
+            success, message = handler.load_model(model_name)
+            print(f"Load result - Success: {success}, Message: {message}")
+            print(f"Handler after load - Model: {handler.model is not None}, Current: {handler.current_model}")
+            
+            if success:
+                MODEL_STATUS['f5_tts']['loaded'] = True
+                MODEL_STATUS['f5_tts']['current_model'] = model_name
+                print(f"✅ F5-TTS model loaded successfully: {model_name}")
+                print(f"MODEL_STATUS updated: {MODEL_STATUS['f5_tts']}")
+                # Auto-select F5-TTS engine
+                selected_engine = "F5-TTS"
+            else:
+                MODEL_STATUS['f5_tts']['loaded'] = False
+                print(f"❌ Failed to load F5-TTS model: {message}")
+                selected_engine = gr.update()
+            
+            if EBOOK_CONVERTER_AVAILABLE:
+                return message, update_f5_model_status(), selected_engine, selected_engine
+            else:
+                return message, update_f5_model_status(), selected_engine
+        
+        def handle_f5_unload():
+            """Handle F5-TTS model unloading"""
+            if not F5_TTS_AVAILABLE:
+                return "❌ F5-TTS not available", update_f5_model_status()
+            
+            handler = get_f5_tts_handler()
+            message = handler.unload_model()
+            MODEL_STATUS['f5_tts']['loaded'] = False
+            MODEL_STATUS['f5_tts']['current_model'] = None
+            
+            return message, update_f5_model_status()
+        
+        # F5-TTS event handlers
+        if F5_TTS_AVAILABLE:
+            # Initial status update
+            demo.load(
+                fn=update_f5_model_status,
+                outputs=[f5_model_status]
+            )
+            
+            f5_download_btn.click(
+                fn=handle_f5_download,
+                inputs=[f5_model_select],
+                outputs=[f5_download_status, f5_model_status]
+            )
+            
+            f5_load_btn.click(
+                fn=handle_f5_load,
+                inputs=[f5_model_select],
+                outputs=[f5_download_status, f5_model_status, tts_engine, ebook_tts_engine] if EBOOK_CONVERTER_AVAILABLE else [f5_download_status, f5_model_status, tts_engine]
+            )
+            
+            f5_unload_btn.click(
+                fn=handle_f5_unload,
+                outputs=[f5_download_status, f5_model_status]
+            )
 
         # Cleanup management
         clear_temp_btn.click(
@@ -5209,6 +5579,7 @@ Alice: I went to Japan. It was absolutely incredible!""",
                 kokoro_voice, kokoro_speed,
                 fish_ref_audio, fish_ref_text, fish_temperature, fish_top_p, fish_repetition_penalty, fish_max_tokens, fish_seed,
                 indextts_ref_audio, indextts_temperature, indextts_seed,
+                f5_ref_audio, f5_ref_text, f5_speed, f5_cross_fade, f5_remove_silence, f5_seed,
                 gain_db, enable_eq, eq_bass, eq_mid, eq_treble,
                 enable_reverb, reverb_room, reverb_damping, reverb_wet,
                 enable_echo, echo_delay, echo_decay,
@@ -5550,6 +5921,8 @@ Alice: Definitely visit Kyoto and try authentic ramen!"""
                 fish_ref_audio, fish_ref_text, fish_temp, fish_top_p, fish_rep_pen, fish_max_tok, fish_seed_val,
                 # IndexTTS parameters
                 idx_ref_audio, idx_temp, idx_seed,
+                # F5-TTS parameters
+                f5_ref_audio, f5_ref_text, f5_speed, f5_cross_fade, f5_remove_silence, f5_seed_val,
                 gain, eq_en, eq_b, eq_m, eq_t,
                 rev_en, rev_room, rev_damp, rev_wet,
                 echo_en, echo_del, echo_dec,
@@ -5568,6 +5941,8 @@ Alice: Definitely visit Kyoto and try authentic ramen!"""
                     fish_ref_audio, fish_ref_text, fish_temp, fish_top_p, fish_rep_pen, fish_max_tok, fish_seed_val,
                     # IndexTTS parameters
                     idx_ref_audio, idx_temp, idx_seed,
+                    # F5-TTS parameters
+                    f5_ref_audio, f5_ref_text, f5_speed, f5_cross_fade, f5_remove_silence, f5_seed_val,
                     gain, eq_en, eq_b, eq_m, eq_t,
                     rev_en, rev_room, rev_damp, rev_wet,
                     echo_en, echo_del, echo_dec,
@@ -5623,6 +5998,8 @@ Alice: Definitely visit Kyoto and try authentic ramen!"""
                     fish_repetition_penalty, fish_max_tokens, fish_seed,
                     # IndexTTS parameters
                     indextts_ref_audio, indextts_temperature, indextts_seed,
+                    # F5-TTS parameters
+                    f5_ref_audio, f5_ref_text, f5_speed, f5_cross_fade, f5_remove_silence, f5_seed,
                     # Effects parameters
                     gain_db, enable_eq, eq_bass, eq_mid, eq_treble,
                     enable_reverb, reverb_room, reverb_damping, reverb_wet,
