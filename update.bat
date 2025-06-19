@@ -1,5 +1,4 @@
 @echo off
-setlocal enabledelayedexpansion
 title Ultimate TTS Studio SUP3R Edition - Updater
 color 0e
 
@@ -116,79 +115,47 @@ echo Would you like to update Python packages?
 echo [y] Yes - Update all dependencies
 echo [n] No - Skip dependency update
 echo.
-set /p "update_deps=Enter your choice (y/n): "
 
-if /i "%update_deps%"=="y" (
-    echo.
-    echo [INFO] Updating dependencies...
-    echo.
-    
-    REM Check if conda environment exists
-    if not exist "%ENV_PATH%" (
-        echo [ERROR] Conda environment not found at: "%ENV_PATH%"
-        echo Please run RUN_INSTALLER.bat first!
-        echo.
-        pause
-        exit /b 1
-    )
-    
-    REM Check if conda is available
-    where conda >nul 2>&1
-    if !errorlevel! neq 0 (
-        echo [ERROR] Conda is not available!
-        echo Please run this from an Anaconda/Miniconda prompt.
-        pause
-        exit /b 1
-    )
-    
-    REM Activate the environment
-    echo [INFO] Activating conda environment...
-    call conda activate "%ENV_PATH%"
-    if !errorlevel! neq 0 (
-        echo [ERROR] Failed to activate conda environment!
-        pause
-        exit /b 1
-    )
-    
-    REM Update pip and UV first
-    echo [INFO] Updating pip and UV...
-    call python -m pip install --upgrade pip
-    call python -m pip install --upgrade uv
-    
-    REM Update requirements using UV
-    echo [INFO] Updating requirements with UV...
-    if exist "%APP_DIR%\requirements.txt" (
-        call python -m uv pip install -r "%APP_DIR%\requirements.txt" --upgrade
-        if !errorlevel! neq 0 (
-            echo [ERROR] Failed to update requirements!
-            echo [INFO] Trying without --upgrade flag...
-            call python -m uv pip install -r "%APP_DIR%\requirements.txt"
-        )
-    )
-    
-    REM Update conda packages
-    echo [INFO] Updating conda packages (pynini)...
-    call conda update -c conda-forge pynini -y
-    
-    REM Reinstall WeTextProcessing to ensure compatibility
-    echo [INFO] Reinstalling WeTextProcessing...
-    call python -m uv pip install WeTextProcessing --no-deps --force-reinstall
-    
-    echo.
-    echo [SUCCESS] All dependencies updated successfully!
+REM Use choice command for more reliable input
+choice /c yn /n /m "Enter your choice (y/n): "
+if errorlevel 2 goto skip_deps
+if errorlevel 1 goto update_deps
+
+:update_deps
+echo.
+echo [INFO] Launching installer to update dependencies...
+echo.
+
+REM Check if conda is available
+where conda >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Conda is not available!
+    echo Please run this from an Anaconda/Miniconda prompt.
+    pause
+    exit /b 1
 )
 
+REM Check if install_direct.bat exists
+if not exist "%APP_DIR%\install_direct.bat" (
+    echo [ERROR] install_direct.bat not found!
+    echo Please ensure all files are present.
+    pause
+    exit /b 1
+)
+
+REM Call the installer to handle all dependency updates
+call "%APP_DIR%\install_direct.bat"
+goto end
+
+:skip_deps
+echo.
+echo [INFO] Skipping dependency update.
+
+:end
 echo.
 echo ========================================
 echo Update completed!
-echo.
-if /i "%update_deps%"=="y" (
-    echo Environment is ready at: "%ENV_PATH%"
-    echo To run the app, use: RUN_APP.bat
-) else (
-    echo You can run the app with: RUN_APP.bat
-    echo To update dependencies later, run this updater again.
-)
+echo To run the app, use: RUN_APP.bat
 echo ========================================
 echo.
-pause 
+pause
