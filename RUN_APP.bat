@@ -69,7 +69,8 @@ echo     pause >> temp_launch.bat
 echo     exit /b 1 >> temp_launch.bat
 echo ) >> temp_launch.bat
 echo echo [INFO] Starting Ultimate TTS Studio... >> temp_launch.bat
-echo echo [INFO] The interface will open at http://127.0.0.1:7860 >> temp_launch.bat
+echo echo [INFO] The interface will load shortly at http://127.0.0.1:7860 >> temp_launch.bat
+echo echo [INFO] Your browser will open automatically in a few seconds... >> temp_launch.bat
 echo echo [INFO] Press Ctrl+C to stop the server >> temp_launch.bat
 echo echo. >> temp_launch.bat
 echo python launch.py >> temp_launch.bat
@@ -82,7 +83,27 @@ timeout /t 2 /nobreak >nul
 del temp_launch.bat
 
 echo [INFO] Ultimate TTS Studio is starting in a new window...
-echo [INFO] The browser will open automatically when ready.
+echo [INFO] Waiting for the server to start before opening browser...
+echo.
+
+REM Wait for the server to start (checking if port 7860 is listening)
+echo [INFO] Checking server status...
+:wait_for_server
+timeout /t 2 /nobreak >nul
+netstat -an | findstr :7860 | findstr LISTENING >nul
+if errorlevel 1 (
+    echo [INFO] Server is still starting up...
+    goto wait_for_server
+)
+
+echo [INFO] Server is ready! Opening browser...
+start "" "http://127.0.0.1:7860"
+
+echo.
+echo [SUCCESS] Ultimate TTS Studio is now running!
+echo [INFO] Browser should have opened automatically.
+echo [INFO] If not, manually open: http://127.0.0.1:7860
+echo.
 echo [INFO] This window can be closed.
 echo.
 pause 
