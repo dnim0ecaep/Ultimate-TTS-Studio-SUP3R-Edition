@@ -123,6 +123,10 @@ You can use the Pinokio script here for one-click setup:
 
 This is the fastest way to get started. It uses a built-in installer script for automatic setup and app launching.
 
+> 🛠️ **Before You Begin:**
+> Make sure you have **Miniconda** or **Anaconda** installed on your system.
+> You can download Miniconda here: [https://docs.conda.io/en/latest/miniconda.html](https://docs.conda.io/en/latest/miniconda.html)
+
 #### 1. Clone the Repository
 
 ```bash
@@ -132,17 +136,16 @@ cd Ultimate-TTS-Studio-SUP3R-Edition
 
 #### 2. Run the Installer
 
-2. Run the Installer
-👉 Double-click RUN_INSTALLER in the project folder.
+👉 Double-click `RUN_INSTALLER` in the project folder.
 This will automatically set up everything for you — dependencies, environment, etc.
 
-3. Launch the App
-👉 Double-click RUN_APP to open the app.
+#### 3. Launch the App
 
-4. Update the App (When Needed)
-👉 Double-click RUN_UPDATE to update the app to the latest version.
+👉 Double-click `RUN_APP` to open the app.
 
 #### 4. Update the App (When Needed)
+
+👉 Double-click `RUN_UPDATE` to update the app to the latest version.
 
 ---
 
