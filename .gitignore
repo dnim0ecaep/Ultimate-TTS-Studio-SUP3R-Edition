@@ -1,0 +1,33 @@
+# Local conda environment
+tts_env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+env/
+venv/
+ENV/
+VENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+temp_status.txt
+requirements_no_versions.txt
+
+# Output files
+outputs/
+*.log 
