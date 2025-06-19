@@ -1,3 +1,33 @@
+## 💖 Support & Donations
+
+If you enjoy using **Ultimate TTS Studio** and would like to support its ongoing development, your generosity is deeply appreciated. Any amount — big or small — makes a difference!
+
+### 🪙 Bitcoin Donations Welcome
+
+**Bitcoin Address:** `1N942jHr6vVuR2KAe2JEf3nN59eR21tpKv`
+
+<table>
+  <tr>
+    <td>
+      <img src="https://github.com/user-attachments/assets/a93b7a18-1a42-461c-bbe2-466f425ce350" alt="Donate via Bitcoin" width="150"/>
+    </td>
+    <td style="padding-left: 20px;">
+      <p>Your donations help cover:</p>
+      <ul>
+        <li>🧠 Development time and continuous feature updates</li>
+        <li>💾 Storage upgrades and data handling</li>
+        <li>🧾 Ongoing subscription costs that support development tools and AI services</li>
+        <li>🚀 Hardware improvements like GPU upgrades for faster and more powerful models</li>
+      </ul>
+      <p>
+        Every contribution directly supports the creation of more innovative apps like this.<br>
+        <strong>Thank you for helping keep the project alive and growing!</strong>
+      </p>
+    </td>
+  </tr>
+</table>
+
+---
 ## ⚠️ Notice: Major App Update
 
 ### 📅 June 18, 2025
