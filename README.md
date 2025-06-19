@@ -119,6 +119,35 @@ You can use the Pinokio script here for one-click setup:
 
 ## Option 2
 
+### 🔁 **Auto-Installer Method (Recommended)**
+
+This is the fastest way to get started. It uses a built-in installer script for automatic setup and app launching.
+
+#### 1. Clone the Repository
+
+```bash
+git clone https://github.com/SUP3RMASS1VE/Ultimate-TTS-Studio-SUP3R-Edition.git
+cd Ultimate-TTS-Studio-SUP3R-Edition
+```
+
+#### 2. Run the Installer
+
+2. Run the Installer
+👉 Double-click RUN_INSTALLER in the project folder.
+This will automatically set up everything for you — dependencies, environment, etc.
+
+3. Launch the App
+👉 Double-click RUN_APP to open the app.
+
+4. Update the App (When Needed)
+👉 Double-click RUN_UPDATE to update the app to the latest version.
+
+#### 4. Update the App (When Needed)
+
+---
+
+## Option 3
+
 [Espeak-ng](https://github.com/espeak-ng/espeak-ng) is needed for Kokoro to work at its best.
 
 ### 1. Clone the repository
@@ -164,7 +193,6 @@ uv pip install -r requirements.txt
 
 > 💡 If you're not using `uv`, you can just use `pip install` in its place.
 
-
 ---
 
 ## 🧠 First-Time Setup Tips
@@ -197,6 +225,7 @@ To use **Fish Speech**, you must download the model checkpoint from Hugging Face
    ```bash
    huggingface-cli download fishaudio/openaudio-s1-mini --local-dir checkpoints/openaudio-s1-mini
    ```
+
 
 ---
 
