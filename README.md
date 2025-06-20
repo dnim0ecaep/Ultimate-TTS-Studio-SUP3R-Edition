@@ -119,9 +119,6 @@ This update brings key improvements to **performance**, **model management**, an
 > 🎧 **Please lower your volume and avoid using headphones** during initial tests.
 
 ---
-Here’s how you can revise your **🛠️ Installation** section to include the Windows-specific `pynini` error note clearly, without disrupting the existing structure:
-
----
 
 ## 🛠️ Installation
 
