@@ -111,7 +111,7 @@ try:
     CHATTERBOX_AVAILABLE = True
 except ImportError:
     CHATTERBOX_AVAILABLE = False
-    print("⚠️ ChatterboxTTS not available. Some features will be disabled.")
+    print(⚠️ ChatterboxTTS not available. Some features will be disabled.")
 
 # Kokoro imports
 try:
@@ -4373,6 +4373,28 @@ def create_gradio_interface():
             🎭 ChatterboxTTS + Kokoro TTS + Fish Speech + IndexTTS + F5-TTS | SUP3R EDITION 🚀<br/>
             <strong>Advanced Text-to-Speech with Multiple Engines, Voice Presets, Audio Effects & Export Options</strong>
             </div>
+        </div>
+        
+        <div style="display: flex; justify-content: center; margin: 20px 0 15px 0;">
+            <a href="https://github.com/SUP3RMASS1VE/Ultimate-TTS-Studio-SUP3R-Edition" target="_blank" style="text-decoration: none;">
+                <button style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    border: none;
+                    border-radius: 25px;
+                    padding: 12px 24px;
+                    color: white;
+                    font-weight: 600;
+                    font-size: 16px;
+                    cursor: pointer;
+                    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+                    transition: all 0.3s ease;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(102, 126, 234, 0.4)';" onmouseout="this.style.transform='translateY(0px)'; this.style.boxShadow='0 4px 15px rgba(102, 126, 234, 0.3)';">
+                    ⭐ Star this project on GitHub
+                </button>
+            </a>
         </div>
         
         <div style="display: flex; justify-content: center; gap: 10px; margin: 15px 0;">
