@@ -295,16 +295,21 @@ MIT License © SUP3RMASS1VE
 
 This project proudly integrates and builds upon the amazing work of:
 
-- [Fish Speech by fishaudio](https://github.com/fishaudio/fish-speech) – Natural and expressive TTS engine.  
+* [Fish Speech by fishaudio](https://github.com/fishaudio/fish-speech) – Natural and expressive TTS engine.
   📜 License: [MIT License](https://github.com/fishaudio/fish-speech/blob/main/LICENSE)
 
-- [Kokoro TTS by hexgrad](https://github.com/hexgrad/kokoro) – High-quality multilingual voice synthesis.  
+* [Kokoro TTS by hexgrad](https://github.com/hexgrad/kokoro) – High-quality multilingual voice synthesis.
   📜 License: [Apache 2.0 License](https://github.com/hexgrad/kokoro/blob/main/LICENSE)
 
-- [ChatterboxTTS by Resemble AI](https://github.com/resemble-ai/chatterbox) – Custom voice cloning from short reference clips.  
+* [ChatterboxTTS by Resemble AI](https://github.com/resemble-ai/chatterbox) – Custom voice cloning from short reference clips.
   📜 License: [Apache 2.0 License](https://github.com/resemble-ai/chatterbox/blob/main/LICENSE)
+
+* [F5-TTS by SWivid](https://github.com/SWivid/F5-TTS) – Efficient and lightweight TTS model focused on real-time synthesis.
+  📜 License: [MIT License](https://github.com/SWivid/F5-TTS/blob/main/LICENSE)
+
+* [Index TTS](https://github.com/index-tts/index-tts) – Modular and scalable text-to-speech system with advanced voice capabilities.
+  📜 License: [Apache 2.0 License](https://github.com/index-tts/index-tts/blob/main/LICENSE)
 
 We deeply thank the authors and contributors to these projects for making this work possible.
 
 ---
-
