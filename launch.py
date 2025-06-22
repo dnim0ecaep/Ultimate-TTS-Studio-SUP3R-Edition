@@ -111,7 +111,7 @@ try:
     CHATTERBOX_AVAILABLE = True
 except ImportError:
     CHATTERBOX_AVAILABLE = False
-    print(⚠️ ChatterboxTTS not available. Some features will be disabled.")
+    print("⚠️ ChatterboxTTS not available. Some features will be disabled.")
 
 # Kokoro imports
 try:
