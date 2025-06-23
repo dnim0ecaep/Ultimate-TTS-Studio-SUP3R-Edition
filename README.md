@@ -28,7 +28,23 @@ If you enjoy using **Ultimate TTS Studio** and would like to support its ongoing
 </table>
 
 ---
+
 ## ⚠️ Notice: Major App Update
+
+### 📅 June 23, 2025
+
+This recent update brings a few UI improvements focused on clarity and usability:
+
+### 🎛️ TTS UI Refactor
+
+* The **TTS engine selector** is now organized into a **tabbed interface**, making it easier to navigate and less overwhelming.
+![Screenshot 2025-06-23 204234](https://github.com/user-attachments/assets/2b0382eb-c358-4a1c-85d6-cb99aa4217f8)
+
+* The **audiobook feature** has been moved into its own tab to **reduce visual clutter** and improve user experience.
+![Screenshot 2025-06-23 204240](https://github.com/user-attachments/assets/05a9df2d-2573-418a-9dbe-b82f6c5e8e1b)
+
+
+---
 
 ### 📅 June 18, 2025
 
@@ -53,36 +69,44 @@ For the **smoothest installation and full feature compatibility**:
 * Use a **Conda environment**, or
 * Install via **[Pinokio](https://pinokio.co)** for the easiest experience.
 
+---
 
 ### 📅 June 10, 2025
 
 We’re excited to announce a major update to the app!
 
 ### 🎧 New Feature: eBook to Audiobook
+
 Bring your favorite eBooks to life with our brand-new **custom voice audiobook** feature. Instantly convert any eBook into a personalized listening experience—perfect for learning, multitasking, or relaxing on the go.
 ![Screenshot 2025-06-10 204108](https://github.com/user-attachments/assets/7aa08f03-4c23-4772-a1cd-6e9967fa8882)
 
 ---
+
 ### 📅 June 7, 2025
 
 This update brings key improvements to **performance**, **model management**, and the **user interface**. Here's what's new:
 
 ### 🔧 Model Management
+
 * Models are **no longer auto-loaded into GPU memory** at app launch.
 * You can now **manually load and unload models**, giving you more precise control over memory usage.
 
 ### 🎨 UI Enhancements
+
 * A **refreshed interface** is now live.
 * The app is now **optimized for dark mode**. It still works in light mode, but some visuals may not display as intended.
 
 ### 🐟 Fish Speech Fix
+
 * Fixed a bug where **Fish Speech** did not chunk text correctly, which could cause processing issues.
 
 ### 📥 Model Download Behavior
+
 * **Chatterbox** and **Kokoro** models will **automatically download** the first time you click "Load."
 * **Fish Speech** models must still be **downloaded manually** and are **not included** in the auto-download process.
 
 ### 🗣️ New Feature: Custom Kokoro Voices
+
 * **Kokoro** now supports **custom `.pt` voice models**!
 * Use the **Custom Voice Upload** section in the Kokoro interface to upload your own compatible voice files.
 
