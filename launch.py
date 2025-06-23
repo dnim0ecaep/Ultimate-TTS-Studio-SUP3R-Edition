@@ -4604,7 +4604,7 @@ def create_gradio_interface():
                             scale=2
                         )
         
-        # Main input section with tabs for single voice and conversation mode
+                        # Main input section with tabs for single voice, conversation mode, and eBook conversion
         with gr.Row():
             with gr.Column(scale=3):
                 # Tabs for different input modes
@@ -4803,6 +4803,165 @@ Alice: I went to Japan. It was absolutely incredible!""",
                                 </p>
                             </div>
                             """)
+                    
+                    # eBook to Audiobook Tab
+                    with gr.TabItem("📚 EBOOK TO AUDIOBOOK", id="ebook_mode"):
+                        if EBOOK_CONVERTER_AVAILABLE:
+                            gr.Markdown("""
+                            <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)); 
+                                        padding: 15px; border-radius: 12px; margin-bottom: 15px;'>
+                                <h3 style='margin: 0 0 8px 0; padding: 0; font-size: 1.1em;'>📖 Convert eBooks to Audiobooks</h3>
+                                <p style='margin: 0; opacity: 0.8; font-size: 0.9em;'>
+                                    Upload your eBook (.epub, .pdf, .txt, .html) and convert it to an audiobook using any TTS engine.
+                                    .html files work best for automatic chapter detection.
+                                </p>
+                            </div>
+                            """)
+                            
+                            with gr.Row():
+                                with gr.Column(scale=2):
+                                    # File upload
+                                    ebook_file = gr.File(
+                                        label="📁 Upload eBook File",
+                                        file_types=[".epub", ".pdf", ".txt", ".html", ".htm", ".rtf", ".fb2", ".odt"],
+                                        elem_classes=["fade-in"]
+                                    )
+                                    
+                                    # Analysis button and results
+                                    with gr.Row():
+                                        analyze_btn = gr.Button(
+                                            "🔍 Analyze eBook",
+                                            variant="secondary",
+                                            elem_classes=["fade-in"]
+                                        )
+                                        convert_ebook_btn = gr.Button(
+                                            "🎧 Convert to Audiobook",
+                                            variant="primary",
+                                            elem_classes=["fade-in"]
+                                        )
+                                        clear_ebook_btn = gr.Button(
+                                            "🗑️ Clear",
+                                            variant="secondary",
+                                            elem_classes=["fade-in"]
+                                        )
+                                    
+                                    # eBook information display
+                                    ebook_info = gr.Markdown(
+                                        value="Upload an eBook file and click 'Analyze eBook' to see details.",
+                                        elem_classes=["fade-in"]
+                                    )
+                                    
+                                    # Chapter selection
+                                    chapter_selection = gr.CheckboxGroup(
+                                        label="📋 Select Chapters to Convert (leave empty for all)",
+                                        choices=[],
+                                        value=[],
+                                        visible=False,
+                                        elem_classes=["fade-in"]
+                                    )
+                                
+                                with gr.Column(scale=1):
+                                    # Conversion settings
+                                    gr.Markdown("**⚙️ Conversion Settings**")
+                                    
+                                    ebook_tts_engine = gr.Radio(
+                                        choices=[
+                                            ("🎤 ChatterboxTTS", "ChatterboxTTS"),
+                                            ("🗣️ Kokoro TTS", "Kokoro TTS"),
+                                            ("🐟 Fish Speech", "Fish Speech"),
+                                            ("🎯 IndexTTS", "IndexTTS"),
+                                            ("🎵 F5-TTS", "F5-TTS")
+                                        ],
+                                        value="ChatterboxTTS" if CHATTERBOX_AVAILABLE else "Kokoro TTS" if KOKORO_AVAILABLE else "Fish Speech" if FISH_SPEECH_AVAILABLE else "IndexTTS" if INDEXTTS_AVAILABLE else "F5-TTS",
+                                        label="🎯 TTS Engine for Audiobook",
+                                        elem_classes=["fade-in"]
+                                    )
+                                    
+                                    # Audio Format for eBook conversion
+                                    ebook_audio_format = gr.Radio(
+                                        choices=[
+                                            ("🎵 WAV - Uncompressed (High Quality)", "wav"),
+                                            ("🎶 MP3 - Compressed (Smaller Size)", "mp3")
+                                        ],
+                                        value="wav",
+                                        label="🎵 Audiobook Format",
+                                        info="Choose format: WAV for best quality, MP3 for smaller file size",
+                                        elem_classes=["fade-in"]
+                                    )
+                                    
+                                    ebook_chunk_length = gr.Slider(
+                                        300, 800, step=50,
+                                        label="📄 Text Chunk Length",
+                                        value=500,
+                                        info="Characters per TTS chunk",
+                                        elem_classes=["fade-in"]
+                                    )
+                                    
+                                    # Chunk timing controls for eBook conversion
+                                    with gr.Accordion("⏱️ Chunk Timing Controls", open=True, elem_classes=["fade-in"]):
+                                        gr.Markdown("""
+                                        <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)); 
+                                                    padding: 10px; border-radius: 8px; margin-bottom: 10px;'>
+                                            <p style='margin: 0; opacity: 0.8; font-size: 0.85em;'>
+                                                🔇 Control the silence duration between chunks and chapters in your audiobook
+                                            </p>
+                                        </div>
+                                        """)
+                                        
+                                        ebook_chunk_gap = gr.Slider(
+                                            0.0, 3.0, step=0.1,
+                                            label="🔇 Gap Between Chunks (seconds)",
+                                            value=1.0,
+                                            info="Silence duration between text chunks within the same chapter",
+                                            elem_classes=["fade-in"]
+                                        )
+                                        
+                                        ebook_chapter_gap = gr.Slider(
+                                            0.0, 5.0, step=0.1,
+                                            label="📖 Gap Between Chapters (seconds)",
+                                            value=2.0,
+                                            info="Silence duration when transitioning between chapters",
+                                            elem_classes=["fade-in"]
+                                        )
+                                    
+
+                            
+                            # Supported formats info
+                            supported_formats = get_supported_formats() if EBOOK_CONVERTER_AVAILABLE else {}
+                            gr.Markdown(f"""
+                            <div style='margin-top: 15px; padding: 12px; background: rgba(102, 126, 234, 0.05); border-radius: 8px; border-left: 3px solid #667eea;'>
+                                <p style='margin: 0; font-size: 0.85em; opacity: 0.8;'>
+                                    <strong>📋 Supported Formats:</strong> {', '.join(supported_formats.keys()) if supported_formats else 'N/A'}<br/>
+                                    <strong>💡 Best Results:</strong> .html files work best for automatic chapter detection.<br/>
+                                    <strong>⚡ Performance:</strong> Large books may take several minutes to convert depending on length and TTS engine.<br/>
+                                    <strong>📁 Large Files:</strong> Audiobooks >50MB or >30min will be saved to the audiobooks folder with a download link (browser can't play very large files).<br/>
+                                    <strong>🎧 Playback:</strong> Use VLC, Windows Media Player, or any audio player for large audiobooks.<br/>
+                                    <strong>🐟 Fish Speech:</strong> Maintains consistent voice throughout the entire audiobook using smart seed management and reference cloning.
+                                </p>
+                            </div>
+                            """)
+                        else:
+                            # Placeholder when eBook converter is not available
+                            gr.Markdown("""
+                            <div style='text-align: center; padding: 40px; opacity: 0.5;'>
+                                <h3>📚 eBook to Audiobook Converter</h3>
+                                <p>⚠️ Not available - please install required dependencies:</p>
+                                <code>pip install ebooklib PyPDF2 beautifulsoup4 chardet</code>
+                            </div>
+                            """)
+                            # Create dummy components to maintain interface consistency
+                            ebook_file = gr.File(visible=False, value=None)
+                            analyze_btn = gr.Button(visible=False)
+                            convert_ebook_btn = gr.Button(visible=False)
+                            clear_ebook_btn = gr.Button(visible=False)
+                            ebook_info = gr.Markdown(visible=False, value="")
+                            chapter_selection = gr.CheckboxGroup(visible=False, choices=[], value=[])
+                            ebook_tts_engine = gr.Radio(visible=False, choices=[], value=None)
+                            ebook_audio_format = gr.Radio(visible=False, choices=[], value="wav")
+                            ebook_chunk_length = gr.Slider(visible=False, value=500)
+                            ebook_chunk_gap = gr.Slider(visible=False, value=1.0)
+                            ebook_chapter_gap = gr.Slider(visible=False, value=2.0)
+
                 
                 # TTS Engine Selection with custom styling
                 tts_engine = gr.Radio(
@@ -4856,6 +5015,28 @@ Alice: I went to Japan. It was absolutely incredible!""",
                     visible=True,
                     value="Ready for conversation generation..."
                 )
+                
+                # Audiobook output and status (for eBook conversion)
+                audiobook_output = gr.Audio(
+                    label="🎧 Generated Audiobook",
+                    show_download_button=True,
+                    elem_classes=["fade-in", "glow"]
+                )
+                
+                # Download link for large audiobook files
+                audiobook_download = gr.File(
+                    label="📥 Download Large Audiobook",
+                    visible=False,
+                    elem_classes=["fade-in"]
+                )
+                
+                # eBook conversion status
+                ebook_status = gr.Textbox(
+                    label="📊 eBook Conversion Status",
+                    lines=6,
+                    interactive=False,
+                    elem_classes=["fade-in"]
+                )
         
         # Generate buttons - separate for single voice and conversation modes
         with gr.Row():
@@ -4876,13 +5057,12 @@ Alice: I went to Japan. It was absolutely incredible!""",
                     visible=False
                 )
         
-        # Engine-specific settings - All visible at once for easy access
+        # Engine-specific settings in tabs
         gr.Markdown("## 🎛️ TTS Engine Settings", elem_classes=["fade-in"])
-        gr.Markdown("*Configure settings for all engines below. Only the selected engine will be used for generation.*", elem_classes=["fade-in"])
         
-        with gr.Row():
-            with gr.Column():
-                # ChatterboxTTS Controls
+        with gr.Tabs(elem_classes=["fade-in"]) as engine_tabs:
+            # ChatterboxTTS Tab
+            with gr.TabItem("🎤 ChatterboxTTS", id="chatterbox_tab"):
                 if CHATTERBOX_AVAILABLE:
                     with gr.Group() as chatterbox_controls:
                         gr.Markdown("**🎤 ChatterboxTTS - Voice cloning from reference audio**")
@@ -4944,8 +5124,9 @@ Alice: I went to Japan. It was absolutely incredible!""",
                         chatterbox_cfg_weight = gr.Slider(visible=False, value=0.5)
                         chatterbox_chunk_size = gr.Slider(visible=False, value=300)
                         chatterbox_seed = gr.Number(visible=False, value=0)
-                
-                # Kokoro TTS Controls
+            
+            # Kokoro TTS Tab
+            with gr.TabItem("🗣️ Kokoro TTS", id="kokoro_tab"):
                 if KOKORO_AVAILABLE:
                     with gr.Group() as kokoro_controls:
                         gr.Markdown("**🗣️ Kokoro TTS - High-quality pre-trained voices**")
@@ -5043,8 +5224,8 @@ Alice: I went to Japan. It was absolutely incredible!""",
                         upload_status = gr.Textbox(visible=False, value="")
                         custom_voice_list = gr.Dataframe(visible=False, value=[])
             
-            with gr.Column():
-                # Fish Speech Controls
+            # Fish Speech Tab
+            with gr.TabItem("🐟 Fish Speech", id="fish_tab"):
                 if FISH_SPEECH_AVAILABLE:
                     with gr.Group() as fish_speech_controls:
                         gr.Markdown("**🐟 Fish Speech - Natural text-to-speech synthesis**")
@@ -5112,8 +5293,17 @@ Alice: I went to Japan. It was absolutely incredible!""",
                     # Placeholder when Fish Speech is not available
                     with gr.Group():
                         gr.Markdown("<div style='text-align: center; padding: 40px; opacity: 0.5;'>**🐟 Fish Speech** - ⚠️ Not available - please check installation</div>")
-                
-                # IndexTTS Controls
+                    # Create dummy components
+                    fish_ref_audio = gr.Audio(visible=False, value=None)
+                    fish_ref_text = gr.Textbox(visible=False, value="")
+                    fish_temperature = gr.Slider(visible=False, value=0.8)
+                    fish_top_p = gr.Slider(visible=False, value=0.8)
+                    fish_repetition_penalty = gr.Slider(visible=False, value=1.1)
+                    fish_max_tokens = gr.Slider(visible=False, value=1024)
+                    fish_seed = gr.Number(visible=False, value=None)
+            
+            # IndexTTS Tab
+            with gr.TabItem("🎯 IndexTTS", id="indextts_tab"):
                 if INDEXTTS_AVAILABLE:
                     with gr.Group(visible=True, elem_id="indextts_controls", elem_classes=["fade-in"]):
                         gr.Markdown("**🎯 IndexTTS - Industrial-level controllable TTS**")
@@ -5151,8 +5341,9 @@ Alice: I went to Japan. It was absolutely incredible!""",
                         indextts_ref_audio = gr.Audio(visible=False, value=None)
                         indextts_temperature = gr.Slider(visible=False, value=0.8)
                         indextts_seed = gr.Number(visible=False, value=None)
-                
-                # F5-TTS Controls
+            
+            # F5-TTS Tab
+            with gr.TabItem("🎵 F5-TTS", id="f5_tab"):
                 if F5_TTS_AVAILABLE:
                     with gr.Group() as f5_tts_controls:
                         gr.Markdown("**🎵 F5-TTS - Flow Matching Text-to-Speech**")
@@ -5218,172 +5409,7 @@ Alice: I went to Japan. It was absolutely incredible!""",
                         f5_remove_silence = gr.Checkbox(visible=False, value=False)
                         f5_seed = gr.Number(visible=False, value=0)
         
-        # eBook to Audiobook Section
-        if EBOOK_CONVERTER_AVAILABLE:
-            with gr.Accordion("📚 eBook to Audiobook Converter", open=True, elem_classes=["fade-in"]):
-                gr.Markdown("""
-                <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)); 
-                            padding: 15px; border-radius: 12px; margin-bottom: 15px;'>
-                    <h3 style='margin: 0 0 8px 0; padding: 0; font-size: 1.1em;'>📖 Convert eBooks to Audiobooks</h3>
-                    <p style='margin: 0; opacity: 0.8; font-size: 0.9em;'>
-                        Upload your eBook (.epub, .pdf, .txt, .html) and convert it to an audiobook using any TTS engine.
-                        .html files work best for automatic chapter detection.
-                    </p>
-                </div>
-                """)
-                
-                with gr.Row():
-                    with gr.Column(scale=2):
-                        # File upload
-                        ebook_file = gr.File(
-                            label="📁 Upload eBook File",
-                            file_types=[".epub", ".pdf", ".txt", ".html", ".htm", ".rtf", ".fb2", ".odt"],
-                            elem_classes=["fade-in"]
-                        )
-                        
-                        # Analysis button and results
-                        with gr.Row():
-                            analyze_btn = gr.Button(
-                                "🔍 Analyze eBook",
-                                variant="secondary",
-                                elem_classes=["fade-in"]
-                            )
-                            convert_ebook_btn = gr.Button(
-                                "🎧 Convert to Audiobook",
-                                variant="primary",
-                                elem_classes=["fade-in"]
-                            )
-                            clear_ebook_btn = gr.Button(
-                                "🗑️ Clear",
-                                variant="secondary",
-                                elem_classes=["fade-in"]
-                            )
-                        
-                        # eBook information display
-                        ebook_info = gr.Markdown(
-                            value="Upload an eBook file and click 'Analyze eBook' to see details.",
-                            elem_classes=["fade-in"]
-                        )
-                        
-                        # Chapter selection
-                        chapter_selection = gr.CheckboxGroup(
-                            label="📋 Select Chapters to Convert (leave empty for all)",
-                            choices=[],
-                            value=[],
-                            visible=False,
-                            elem_classes=["fade-in"]
-                        )
-                    
-                    with gr.Column(scale=1):
-                        # Conversion settings
-                        gr.Markdown("**⚙️ Conversion Settings**")
-                        
-                        ebook_tts_engine = gr.Radio(
-                            choices=[
-                                ("🎤 ChatterboxTTS", "ChatterboxTTS"),
-                                ("🗣️ Kokoro TTS", "Kokoro TTS"),
-                                ("🐟 Fish Speech", "Fish Speech"),
-                                ("🎯 IndexTTS", "IndexTTS"),
-                                ("🎵 F5-TTS", "F5-TTS")
-                            ],
-                            value="ChatterboxTTS" if CHATTERBOX_AVAILABLE else "Kokoro TTS" if KOKORO_AVAILABLE else "Fish Speech" if FISH_SPEECH_AVAILABLE else "IndexTTS" if INDEXTTS_AVAILABLE else "F5-TTS",
-                            label="🎯 TTS Engine for Audiobook",
-                            elem_classes=["fade-in"]
-                        )
-                        
-                        # Audio Format for eBook conversion
-                        ebook_audio_format = gr.Radio(
-                            choices=[
-                                ("🎵 WAV - Uncompressed (High Quality)", "wav"),
-                                ("🎶 MP3 - Compressed (Smaller Size)", "mp3")
-                            ],
-                            value="wav",
-                            label="🎵 Audiobook Format",
-                            info="Choose format: WAV for best quality, MP3 for smaller file size",
-                            elem_classes=["fade-in"]
-                        )
-                        
-                        ebook_chunk_length = gr.Slider(
-                            300, 800, step=50,
-                            label="📄 Text Chunk Length",
-                            value=500,
-                            info="Characters per TTS chunk",
-                            elem_classes=["fade-in"]
-                        )
-                        
-                        # Chunk timing controls for eBook conversion
-                        with gr.Accordion("⏱️ Chunk Timing Controls", open=True, elem_classes=["fade-in"]):
-                            gr.Markdown("""
-                            <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)); 
-                                        padding: 10px; border-radius: 8px; margin-bottom: 10px;'>
-                                <p style='margin: 0; opacity: 0.8; font-size: 0.85em;'>
-                                    🔇 Control the silence duration between chunks and chapters in your audiobook
-                                </p>
-                            </div>
-                            """)
-                            
-                            ebook_chunk_gap = gr.Slider(
-                                0.0, 3.0, step=0.1,
-                                label="🔇 Gap Between Chunks (seconds)",
-                                value=1.0,
-                                info="Silence duration between text chunks within the same chapter",
-                                elem_classes=["fade-in"]
-                            )
-                            
-                            ebook_chapter_gap = gr.Slider(
-                                0.0, 5.0, step=0.1,
-                                label="📖 Gap Between Chapters (seconds)",
-                                value=2.0,
-                                info="Silence duration when transitioning between chapters",
-                                elem_classes=["fade-in"]
-                            )
-                        
-                        # Audiobook output
-                        audiobook_output = gr.Audio(
-                            label="🎧 Generated Audiobook",
-                            show_download_button=True,
-                            elem_classes=["fade-in", "glow"]
-                        )
-                        
-                        # Download link for large files
-                        audiobook_download = gr.File(
-                            label="📥 Download Large Audiobook",
-                            visible=False,
-                            elem_classes=["fade-in"]
-                        )
-                        
-                        # Conversion status
-                        ebook_status = gr.Textbox(
-                            label="📊 Conversion Status",
-                            lines=4,
-                            interactive=False,
-                            elem_classes=["fade-in"]
-                        )
-                
-                # Supported formats info
-                supported_formats = get_supported_formats() if EBOOK_CONVERTER_AVAILABLE else {}
-                gr.Markdown(f"""
-                <div style='margin-top: 15px; padding: 12px; background: rgba(102, 126, 234, 0.05); border-radius: 8px; border-left: 3px solid #667eea;'>
-                    <p style='margin: 0; font-size: 0.85em; opacity: 0.8;'>
-                        <strong>📋 Supported Formats:</strong> {', '.join(supported_formats.keys()) if supported_formats else 'N/A'}<br/>
-                        <strong>💡 Best Results:</strong> .html files work best for automatic chapter detection.<br/>
-                        <strong>⚡ Performance:</strong> Large books may take several minutes to convert depending on length and TTS engine.<br/>
-                        <strong>📁 Large Files:</strong> Audiobooks >50MB or >30min will be saved to the audiobooks folder with a download link (browser can't play very large files).<br/>
-                        <strong>🎧 Playback:</strong> Use VLC, Windows Media Player, or any audio player for large audiobooks.<br/>
-                        <strong>🐟 Fish Speech:</strong> Maintains consistent voice throughout the entire audiobook using smart seed management and reference cloning.
-                    </p>
-                </div>
-                """)
-        else:
-            # Placeholder when eBook converter is not available
-            with gr.Accordion("📚 eBook to Audiobook Converter", open=False, elem_classes=["fade-in"]):
-                gr.Markdown("""
-                <div style='text-align: center; padding: 40px; opacity: 0.5;'>
-                    <h3>📚 eBook to Audiobook Converter</h3>
-                    <p>⚠️ Not available - please install required dependencies:</p>
-                    <code>pip install ebooklib PyPDF2 beautifulsoup4 chardet</code>
-                </div>
-                """)
+
         
 
 
@@ -5458,14 +5484,17 @@ Alice: I went to Japan. It was absolutely incredible!""",
                 chatterbox_status_text = "✅ Loaded (Auto-selected)"
                 # Auto-select ChatterboxTTS engine when loaded
                 selected_engine = "ChatterboxTTS"
+                # Auto-switch to ChatterboxTTS tab
+                selected_tab = gr.update(selected="chatterbox_tab")
             else:
                 chatterbox_status_text = "❌ Failed to load"
                 selected_engine = gr.update()  # No change to current selection
+                selected_tab = gr.update()  # No tab change
             
             if EBOOK_CONVERTER_AVAILABLE:
-                return chatterbox_status_text, selected_engine, selected_engine
+                return chatterbox_status_text, selected_engine, selected_engine, selected_tab
             else:
-                return chatterbox_status_text, selected_engine
+                return chatterbox_status_text, selected_engine, selected_tab
         
         def handle_unload_chatterbox():
             message = unload_chatterbox()
@@ -5480,14 +5509,17 @@ Alice: I went to Japan. It was absolutely incredible!""",
                 kokoro_status_text = "✅ Loaded (Auto-selected)"
                 # Auto-select Kokoro TTS engine when loaded
                 selected_engine = "Kokoro TTS"
+                # Auto-switch to Kokoro TTS tab
+                selected_tab = gr.update(selected="kokoro_tab")
             else:
                 kokoro_status_text = "❌ Failed to load"
                 selected_engine = gr.update()  # No change to current selection
+                selected_tab = gr.update()  # No tab change
             
             if EBOOK_CONVERTER_AVAILABLE:
-                return kokoro_status_text, selected_engine, selected_engine
+                return kokoro_status_text, selected_engine, selected_engine, selected_tab
             else:
-                return kokoro_status_text, selected_engine
+                return kokoro_status_text, selected_engine, selected_tab
         
         def handle_unload_kokoro():
             message = unload_kokoro()
@@ -5501,14 +5533,17 @@ Alice: I went to Japan. It was absolutely incredible!""",
                 fish_status_text = "✅ Loaded (Auto-selected)"
                 # Auto-select Fish Speech engine when loaded
                 selected_engine = "Fish Speech"
+                # Auto-switch to Fish Speech tab
+                selected_tab = gr.update(selected="fish_tab")
             else:
                 fish_status_text = "❌ Failed to load"
                 selected_engine = gr.update()  # No change to current selection
+                selected_tab = gr.update()  # No tab change
             
             if EBOOK_CONVERTER_AVAILABLE:
-                return fish_status_text, selected_engine, selected_engine
+                return fish_status_text, selected_engine, selected_engine, selected_tab
             else:
-                return fish_status_text, selected_engine
+                return fish_status_text, selected_engine, selected_tab
         def handle_unload_fish():
             message = unload_fish_speech()
             fish_status_text = "⭕ Not loaded"
@@ -5520,14 +5555,17 @@ Alice: I went to Japan. It was absolutely incredible!""",
             if success:
                 indextts_status_text = "✅ Loaded (Auto-selected)"
                 selected_engine = "IndexTTS"
+                # Auto-switch to IndexTTS tab
+                selected_tab = gr.update(selected="indextts_tab")
             else:
                 indextts_status_text = "❌ Failed to load"
                 selected_engine = gr.update()
+                selected_tab = gr.update()  # No tab change
             
             if EBOOK_CONVERTER_AVAILABLE:
-                return indextts_status_text, selected_engine, selected_engine
+                return indextts_status_text, selected_engine, selected_engine, selected_tab
             else:
-                return indextts_status_text, selected_engine
+                return indextts_status_text, selected_engine, selected_tab
 
         def handle_unload_indextts():
             message = unload_indextts()
@@ -5551,7 +5589,7 @@ Alice: I went to Japan. It was absolutely incredible!""",
         if CHATTERBOX_AVAILABLE:
             load_chatterbox_btn.click(
                 fn=handle_load_chatterbox,
-                outputs=[chatterbox_status, tts_engine, ebook_tts_engine] if EBOOK_CONVERTER_AVAILABLE else [chatterbox_status, tts_engine]
+                outputs=[chatterbox_status, tts_engine, ebook_tts_engine, engine_tabs] if EBOOK_CONVERTER_AVAILABLE else [chatterbox_status, tts_engine, engine_tabs]
             )
             unload_chatterbox_btn.click(
                 fn=handle_unload_chatterbox,
@@ -5562,7 +5600,7 @@ Alice: I went to Japan. It was absolutely incredible!""",
         if KOKORO_AVAILABLE:
             load_kokoro_btn.click(
                 fn=handle_load_kokoro,
-                outputs=[kokoro_status, tts_engine, ebook_tts_engine] if EBOOK_CONVERTER_AVAILABLE else [kokoro_status, tts_engine]
+                outputs=[kokoro_status, tts_engine, ebook_tts_engine, engine_tabs] if EBOOK_CONVERTER_AVAILABLE else [kokoro_status, tts_engine, engine_tabs]
             )
             unload_kokoro_btn.click(
                 fn=handle_unload_kokoro,
@@ -5573,7 +5611,7 @@ Alice: I went to Japan. It was absolutely incredible!""",
         if FISH_SPEECH_AVAILABLE:
             load_fish_btn.click(
                 fn=handle_load_fish,
-                outputs=[fish_status, tts_engine, ebook_tts_engine] if EBOOK_CONVERTER_AVAILABLE else [fish_status, tts_engine]
+                outputs=[fish_status, tts_engine, ebook_tts_engine, engine_tabs] if EBOOK_CONVERTER_AVAILABLE else [fish_status, tts_engine, engine_tabs]
             )
             unload_fish_btn.click(
                 fn=handle_unload_fish,
@@ -5584,7 +5622,7 @@ Alice: I went to Japan. It was absolutely incredible!""",
         if INDEXTTS_AVAILABLE:
             load_indextts_btn.click(
                 fn=handle_load_indextts,
-                outputs=[indextts_status, tts_engine, ebook_tts_engine] if EBOOK_CONVERTER_AVAILABLE else [indextts_status, tts_engine]
+                outputs=[indextts_status, tts_engine, ebook_tts_engine, engine_tabs] if EBOOK_CONVERTER_AVAILABLE else [indextts_status, tts_engine, engine_tabs]
             )
             unload_indextts_btn.click(
                 fn=handle_unload_indextts,
@@ -5642,7 +5680,7 @@ Alice: I went to Japan. It was absolutely incredible!""",
         def handle_f5_load(model_name):
             """Handle F5-TTS model loading"""
             if not F5_TTS_AVAILABLE:
-                return "❌ F5-TTS not available", update_f5_model_status(), gr.update()
+                return "❌ F5-TTS not available", update_f5_model_status(), gr.update(), gr.update()
             
             handler = get_f5_tts_handler()
             print(f"Attempting to load F5-TTS model: {model_name}")
@@ -5659,15 +5697,18 @@ Alice: I went to Japan. It was absolutely incredible!""",
                 print(f"MODEL_STATUS updated: {MODEL_STATUS['f5_tts']}")
                 # Auto-select F5-TTS engine
                 selected_engine = "F5-TTS"
+                # Auto-switch to F5-TTS tab
+                selected_tab = gr.update(selected="f5_tab")
             else:
                 MODEL_STATUS['f5_tts']['loaded'] = False
                 print(f"❌ Failed to load F5-TTS model: {message}")
                 selected_engine = gr.update()
+                selected_tab = gr.update()  # No tab change
             
             if EBOOK_CONVERTER_AVAILABLE:
-                return message, update_f5_model_status(), selected_engine, selected_engine
+                return message, update_f5_model_status(), selected_engine, selected_engine, selected_tab
             else:
-                return message, update_f5_model_status(), selected_engine
+                return message, update_f5_model_status(), selected_engine, selected_tab
         
         def handle_f5_unload():
             """Handle F5-TTS model unloading"""
@@ -5698,7 +5739,7 @@ Alice: I went to Japan. It was absolutely incredible!""",
             f5_load_btn.click(
                 fn=handle_f5_load,
                 inputs=[f5_model_select],
-                outputs=[f5_download_status, f5_model_status, tts_engine, ebook_tts_engine] if EBOOK_CONVERTER_AVAILABLE else [f5_download_status, f5_model_status, tts_engine]
+                outputs=[f5_download_status, f5_model_status, tts_engine, ebook_tts_engine, engine_tabs] if EBOOK_CONVERTER_AVAILABLE else [f5_download_status, f5_model_status, tts_engine, engine_tabs]
             )
             
             f5_unload_btn.click(
@@ -6021,7 +6062,22 @@ Alice: Definitely visit Kyoto and try authentic ramen!"""
             outputs=[audio_output, conversation_info]  # Use same audio output as single voice mode
         )
         
-        # Handle TTS engine changes to enable/disable conversation mode
+        # Function to switch tabs based on TTS engine selection
+        def switch_engine_tab(selected_engine):
+            """Switch to the appropriate tab when TTS engine is selected."""
+            tab_mapping = {
+                "ChatterboxTTS": "chatterbox_tab",
+                "Kokoro TTS": "kokoro_tab",
+                "Fish Speech": "fish_tab",
+                "IndexTTS": "indextts_tab",
+                "F5-TTS": "f5_tab"
+            }
+            
+            if selected_engine in tab_mapping:
+                return gr.update(selected=tab_mapping[selected_engine])
+            return gr.update()
+        
+        # Handle TTS engine changes to enable/disable conversation mode and switch tabs
         tts_engine.change(
             fn=handle_tts_engine_change,
             inputs=[tts_engine],
@@ -6035,6 +6091,10 @@ Alice: Definitely visit Kyoto and try authentic ramen!"""
                 conversation_pause,  # Enable/disable pause slider
                 speaker_transition_pause  # Enable/disable transition pause slider
             ]
+        ).then(
+            fn=switch_engine_tab,
+            inputs=[tts_engine],
+            outputs=[engine_tabs]
         )
         
         # eBook conversion event handlers
