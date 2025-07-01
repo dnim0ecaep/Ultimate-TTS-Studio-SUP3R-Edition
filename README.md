@@ -160,7 +160,6 @@ This update brings key improvements to **performance**, **model management**, an
 conda install -c conda-forge pynini==2.1.6
 pip install WeTextProcessing --no-deps
 ```
-
 ---
 
 ## Option 1.
@@ -168,6 +167,10 @@ pip install WeTextProcessing --no-deps
 Install via [Pinokio](https://pinokio.co)
 You can use the Pinokio script here for one-click setup:
 [Pinokio App Installer](https://pinokio-home.netlify.app/item?uri=https://github.com/SUP3RMASS1VE/Ultimate-TTS-Studio-SUP3R-Edition-Pinokio)
+
+### Option 1a: Install via [Dione](https://getdione.app)
+
+You can also use [Dione](https://getdione.app) for an easy one-click installation experience:
 
 ---
 
@@ -285,9 +288,6 @@ To use **Fish Speech**, you must download the model checkpoint from Hugging Face
 
 
 ---
-
-Would you like the full updated `README.md` in one code block to copy/paste?
-
 
 ## ▶️ Run the Studio
 
