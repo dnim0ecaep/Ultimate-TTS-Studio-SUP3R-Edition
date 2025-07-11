@@ -1,35 +1,34 @@
-# Use an official Python runtime as a parent image
-FROM python:3.10-slim-bookworm
+# syntax=docker/dockerfile:1
+FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
 
-# Set the working directory in the container
-WORKDIR /app
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    PATH=/opt/conda/bin:$PATH
 
-# Install system-level dependencies required for building PyAudio and other potential packages
-# 'build-essential' provides tools like gcc, make, etc.
-# 'libsndfile1' is often needed for audio processing libraries
-# 'portaudio19-dev' is specifically for PyAudio
-# Clean up apt caches to keep image size small
+# --- system deps ------------------------------------------------------------
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    build-essential \
-    libsndfile1 \
-    portaudio19-dev && \
+        curl git ca-certificates build-essential ffmpeg sox libsndfile1 && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file into the container
-COPY requirements.txt .
+# --- Miniconda --------------------------------------------------------------
+RUN curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o mc.sh && \
+    bash mc.sh -b -p /opt/conda && rm mc.sh
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+SHELL ["/bin/bash", "-c"]
 
-# Copy the entire project directory into the container
-COPY . .
+# --- copy code --------------------------------------------------------------
+WORKDIR /workspace
+COPY . /workspace
+COPY RUN_APP_docker.sh /workspace/
 
-# Expose the port that the application will run on
+# --- build the project's conda env -----------------------------------------
+RUN bash install_direct.sh
+
+# --- expose UI --------------------------------------------------------------
 EXPOSE 7860
 
-# Define environment variables if needed by the application
-# ENV SOME_VARIABLE="some_value"
+# --- entrypoint -------------------------------------------------------------
+ENV CI_DOCKER_RUN=1
+CMD conda run -p /workspace/tts_env python launch.py --listen 0.0.0.0
 
-# Run the command to start the application
-CMD ["RUN_APP.sh"]
