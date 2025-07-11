@@ -7,6 +7,16 @@ echo "         APP LAUNCHER"
 echo "========================================"
 echo
 
+# --- add at top ---
+if [[ "${CI_DOCKER_RUN:-0}" == "1" ]]; then
+  AUTO_BROWSER=0         # disable xdg-open
+  WAIT_FOR_KEY=0         # skip read -rp prompts
+fi
+
+# ...original script continues...
+# replace the final read -rp with:
+[[ "${WAIT_FOR_KEY:-1}" == "1" ]] && read -rp "Press Enter to close..."
+
 # Define the local environment path
 LOCAL_ENV_PATH="$(pwd)/tts_env"
 
